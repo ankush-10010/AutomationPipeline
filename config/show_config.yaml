@@ -1,0 +1,96 @@
+# ============================================================================
+# Show Configuration — Add one entry per show you cover
+# ============================================================================
+# Replace "rick_and_morty" with your actual first show.
+# This file drives topic mining prompts, script tone, and clip matching.
+
+shows:
+  rick_and_morty:                              # Show slug (used in folder names, etc.)
+    display_name: "Rick and Morty"
+    active: true                               # Set to false to pause content for this show
+
+    # -- Characters (used for clip matching + script prompts) ----------------
+    characters:
+      - name: "Rick Sanchez"
+        aliases: ["Rick", "C-137", "Grandpa Rick"]
+        description: "Genius alcoholic scientist, nihilistic but secretly caring"
+      - name: "Morty Smith"
+        aliases: ["Morty", "Evil Morty"]
+        description: "Rick's anxious grandson, often the moral compass"
+      - name: "Summer Smith"
+        aliases: ["Summer"]
+        description: "Morty's older sister, increasingly competent and jaded"
+      - name: "Beth Smith"
+        aliases: ["Beth", "Space Beth"]
+        description: "Rick's daughter, horse surgeon, identity crisis"
+      - name: "Jerry Smith"
+        aliases: ["Jerry"]
+        description: "Beth's husband, insecure, often the butt of jokes"
+
+    # -- Locations (used for clip matching) ----------------------------------
+    locations:
+      - "garage"
+      - "living room"
+      - "school"
+      - "Citadel of Ricks"
+      - "alien planet"
+      - "spaceship"
+      - "Blips and Chitz"
+      - "Birdperson's house"
+
+    # -- Themes & keywords (used for topic mining + clip matching) -----------
+    themes:
+      - "multiverse"
+      - "portal gun"
+      - "nihilism"
+      - "family dynamics"
+      - "mad science"
+      - "alternate dimensions"
+      - "existentialism"
+      - "power"
+      - "intelligence vs emotion"
+
+    # -- Prompt tuning (adjusts tone for this show's content) ----------------
+    prompt_tuning:
+      narrator_style: >
+        confident, slightly irreverent, like a smart friend breaking down
+        something wild that happened — match the show's dark humor without
+        being edgy for the sake of it
+      avoid_phrases:
+        - "buckle up"
+        - "mind-blowing"
+        - "let's dive in"
+        - "without further ado"
+        - "in this video"
+      reference_style: >
+        Reference specific episodes by name or description (e.g., "the
+        episode where they go to Atlantis") rather than by season/episode
+        number — casual viewers won't know S3E7
+
+    # -- Episode data file (for topic mining) --------------------------------
+    # Point this to a text/json file containing episode summaries
+    episode_data_file: "./clips/rick_and_morty/episode_summaries.txt"
+
+    # -- Clips directory -----------------------------------------------------
+    clips_dir: "./clips/rick_and_morty"
+
+# ============================================================================
+# Template for adding a new show — copy, rename the key, fill in the details
+# ============================================================================
+#   new_show_slug:
+#     display_name: "Show Name"
+#     active: true
+#     characters:
+#       - name: "Character Name"
+#         aliases: ["Alias1", "Alias2"]
+#         description: "Brief description"
+#     locations:
+#       - "location1"
+#     themes:
+#       - "theme1"
+#     prompt_tuning:
+#       narrator_style: "description of narrator tone"
+#       avoid_phrases: ["phrase1", "phrase2"]
+#       reference_style: "how to reference episodes"
+#     episode_data_file: "./clips/new_show_slug/episode_summaries.txt"
+#     clips_dir: "./clips/new_show_slug"

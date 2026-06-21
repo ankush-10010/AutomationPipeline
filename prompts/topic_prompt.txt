@@ -1,0 +1,49 @@
+You are a content strategist for a YouTube Shorts channel about {show_name}.
+
+Given the following episode summaries and character information:
+---
+{show_context}
+---
+
+Character details:
+{character_details}
+
+Key themes of the show: {themes}
+
+Generate {num_topics} compelling short-form video topics. Each topic should be a question
+that fans would want answered in under 60 seconds.
+
+Topic types to mix between:
+- "Why did [character] do [specific thing]?" — motivation explainers
+- "What would happen if [hypothetical]?" — what-if scenarios
+- "The real reason behind [event/detail]" — hidden meaning reveals
+- "Most people missed this about [scene/episode]" — detail spotlights
+- "[Character] was actually right about [thing]" — perspective flips
+- "The darkest detail in [episode/scene]" — dark undertone analysis
+
+Rules:
+- Each topic must be answerable in under 80 seconds of narration
+- Topics should have an interesting, non-obvious answer or angle
+- The question itself should be engaging enough to make someone stop scrolling
+- Mix between character-focused, plot-focused, and theme-focused topics
+- Avoid topics that require extensive plot setup to understand
+- Each topic should work as a standalone video (no "part 1/part 2")
+
+Previously covered topics (DO NOT repeat or rephrase these):
+{completed_topics}
+
+Output ONLY a valid JSON array. Each element should be an object with these fields:
+- "topic": the full question or topic statement
+- "hook": a 1-sentence scroll-stopping hook to open the video
+- "answer_angle": a brief note on what the answer/insight is (for your reference, not shown to viewers)
+- "difficulty": "easy", "medium", or "hard" (how much show knowledge the viewer needs)
+
+Example output format:
+[
+  {{
+    "topic": "Why did Rick actually destroy the Citadel?",
+    "hook": "Rick didn't destroy the Citadel to save Morty — he did it to save himself.",
+    "answer_angle": "The Citadel represented everything Rick hated about conformity, and Evil Morty's rise proved Rick's philosophy was being weaponized against him.",
+    "difficulty": "medium"
+  }}
+]

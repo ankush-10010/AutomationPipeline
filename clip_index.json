@@ -1,0 +1,15 @@
+{
+  "_schema_example": {
+    "filename": "rick_portal_gun_s1e1_032.mp4",
+    "show": "rick_and_morty",
+    "season": 1,
+    "episode": 1,
+    "characters": ["rick", "morty"],
+    "location": "garage",
+    "action": "using portal gun",
+    "mood": "dramatic",
+    "tags": ["portal", "invention", "science", "dimension"],
+    "duration_seconds": 4.2
+  },
+  "clips": []
+}
