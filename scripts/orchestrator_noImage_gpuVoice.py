@@ -326,15 +326,50 @@ def run_tts(
         return audio_path
 
     else:
+        # --- NEW: Automatically extract pure text for Colab ---
+        import json
+        import re
+        try:
+            with open(script_path, 'r', encoding='utf-8') as f:
+                script_data = json.load(f)
+            
+            clean_lines = []
+            for seg in script_data.get("segments", []):
+                text = seg.get("text", "").strip()
+                # Remove prefixes like "Narrator:", "Voiceover:", "**Host:**"
+                text = re.sub(r"^\**\s*(?:Narrator|Voiceover|Host|Speaker|V/O)\s*\**\s*:\s*", "", text, flags=re.IGNORECASE)
+                # Also remove bracketed or parenthesized speaker labels
+                text = re.sub(r"^\[.*?\]\s*:\s*", "", text)
+                text = re.sub(r"^\(.*?\)\s*:\s*", "", text)
+                if text:
+                    clean_lines.append(text)
+            
+            pure_text = "\n\n".join(clean_lines)
+            
+            # Save to topics/approved/{name}.txt
+            txt_path1 = script_path.with_suffix('.txt')
+            txt_path1.write_text(pure_text, encoding='utf-8')
+            
+            # Save to output/script.txt for easy access
+            output_dir = get_project_path("output_dir", pipeline_cfg)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            txt_path2 = output_dir / "script.txt"
+            txt_path2.write_text(pure_text, encoding='utf-8')
+            
+            extracted_msg = f"  ✓ Pure text extracted to:\n    - {txt_path1}\n    - {txt_path2}"
+        except Exception as e:
+            extracted_msg = f"  ✗ Failed to extract text: {e}"
+
         log.warning(
             "Please generate audio using the Colab notebook: notebooks/orchestrator_noImage_gpuVoice.ipynb"
         )
         print("\n" + "=" * 60)
         print("⚠️  COLAB GPU TTS REQUIRED")
         print("=" * 60)
-        print(f"\n  Script file: {script_path}")
+        print(f"\n  Original JSON file: {script_path}")
+        print(extracted_msg)
         print("\n  Steps:")
-        print("  1. Upload script.txt to your Colab notebook.")
+        print("  1. Upload output/script.txt to your Colab notebook.")
         print("  2. Run notebooks/orchestrator_noImage_gpuVoice.ipynb on Colab.")
         print("  3. Download the generated .wav files to audio/")
         print("  4. Resume: python scripts/orchestrator_noImage_gpuVoice.py --resume")
