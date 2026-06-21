@@ -10,6 +10,7 @@ import re
 import sys
 import time
 import requests
+import json
 from pathlib import Path
 
 from rag_manager import RAGManager
@@ -46,6 +47,56 @@ def sanitize_filename(topic: str, max_length: int = 80) -> str:
     name = name[:max_length].rstrip("_")
     return name
 
+def parse_llm_json(text: str) -> dict:
+    """Extracts and parses JSON from the LLM output."""
+    try:
+        # Try finding JSON block
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return json.loads(text)
+    except Exception as e:
+        log.error("Failed to parse LLM JSON: %s\nText was: %s", e, text)
+        return None
+
+def score_clip(clip: dict, search: dict) -> int:
+    """Scores a clip against a visual search dictionary."""
+    score = 0
+    
+    req_chars = [c.lower() for c in search.get("characters", [])]
+    clip_chars = [c.lower() for c in clip.get("characters", [])]
+    for c in req_chars:
+        if any(c in cc or cc in c for cc in clip_chars):
+            score += 3
+            
+    req_mood = search.get("mood", "").lower()
+    clip_mood = clip.get("mood", "").lower()
+    if req_mood and (req_mood in clip_mood or clip_mood in req_mood):
+        score += 2
+        
+    req_action = search.get("action", "").lower()
+    clip_action = clip.get("action", "").lower()
+    if req_action and (req_action in clip_action or clip_action in req_action):
+        score += 2
+        
+    req_tags = [t.lower() for t in search.get("tags", [])]
+    clip_tags = [t.lower() for t in clip.get("tags", [])]
+    for t in req_tags:
+        if any(t in ct or ct in t for ct in clip_tags):
+            score += 1
+            
+    return score
+
+def find_best_clip(search: dict, clips: list) -> str:
+    """Finds the filename of the best matching clip."""
+    best_score = -1
+    best_clip = None
+    for clip in clips:
+        score = score_clip(clip, search)
+        if score > best_score:
+            best_score = score
+            best_clip = clip
+    return best_clip.get("filename") if best_clip else None
 
 # ---------------------------------------------------------------------------
 # Build prompt
@@ -154,14 +205,14 @@ def save_script(topic: str, script_text: str, pipeline_config: dict) -> Path:
     approved_dir = get_project_path("topics_approved", pipeline_config)
     approved_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = sanitize_filename(topic) + ".txt"
+    filename = sanitize_filename(topic) + ".json"
     out_path = approved_dir / filename
 
     # Avoid overwriting — append a counter if the file exists
     if out_path.exists():
         counter = 1
         while out_path.exists():
-            out_path = approved_dir / f"{sanitize_filename(topic)}_{counter}.txt"
+            out_path = approved_dir / f"{sanitize_filename(topic)}_{counter}.json"
             counter += 1
 
     with open(out_path, "w", encoding="utf-8") as f:
@@ -190,8 +241,29 @@ def generate_script_for_topic(
     if not script_text.strip():
         log.error("Ollama returned an empty response for topic: %s", topic)
         sys.exit(1)
+        
+    # Parse the JSON and match clips
+    script_data = parse_llm_json(script_text)
+    if not script_data:
+        log.error("Could not extract valid JSON orchestration plan.")
+        sys.exit(1)
+        
+    clip_index_path = get_project_path("clip_index", pipeline_config)
+    clip_index = load_json(clip_index_path)
+    clips = clip_index.get("clips", [])
+    
+    if clips:
+        log.info(f"Matching visuals against {len(clips)} available clips...")
+        for seg in script_data.get("segments", []):
+            v_search = seg.get("visual_search", {})
+            best_clip = find_best_clip(v_search, clips)
+            seg["matched_clip"] = best_clip
+            log.info(f" -> Matched [{best_clip}] for search: {v_search}")
+    else:
+        log.warning("No clips found in clip_index.json to match against.")
 
-    return save_script(topic, script_text, pipeline_config)
+    final_script_text = json.dumps(script_data, indent=2)
+    return save_script(topic, final_script_text, pipeline_config)
 
 
 # ---------------------------------------------------------------------------
