@@ -9,3 +9,8 @@ desktop.ini
 # RAG Database
 vector_db/
 __pycache__/
+
+# Allow required data files to be pushed despite the wildcards above
+!topics/theories.json
+!topics/wiki.json
+# !rick_and_morty_subtitles/
