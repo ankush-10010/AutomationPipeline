@@ -1,0 +1,7 @@
+*.mp4
+*.mkv
+*.json
+*.srt
+*.zip
+# System
+desktop.ini

@@ -201,15 +201,19 @@ if "tts" in dir():
     torch.cuda.empty_cache()
     print("   Freed TTS model from GPU memory")
 
+# Detect device
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 # Load base model
 sdxl_base = DiffusionPipeline.from_pretrained(
     SDXL_MODEL,
-    torch_dtype=torch.float16,
+    torch_dtype=torch.float16 if device == "cuda" else torch.float32,
     use_safetensors=True,
-    variant="fp16",
+    variant="fp16" if device == "cuda" else None,
 )
-sdxl_base.to("cuda")
-sdxl_base.enable_model_cpu_offload()  # Saves VRAM
+sdxl_base.to(device)
+if device == "cuda":
+    sdxl_base.enable_model_cpu_offload()  # Saves VRAM
 
 # Optionally load refiner
 sdxl_refiner = None
@@ -217,12 +221,13 @@ if USE_REFINER:
     print("🔄 Loading SDXL refiner...")
     sdxl_refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
         SDXL_REFINER,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
         use_safetensors=True,
-        variant="fp16",
+        variant="fp16" if device == "cuda" else None,
     )
-    sdxl_refiner.to("cuda")
-    sdxl_refiner.enable_model_cpu_offload()
+    sdxl_refiner.to(device)
+    if device == "cuda":
+        sdxl_refiner.enable_model_cpu_offload()
 
 print("✅ SDXL models loaded!")
 

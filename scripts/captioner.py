@@ -79,9 +79,22 @@ def get_whisper_model(model_size: str, compute_type: str):
         )
         sys.exit(1)
 
-    log.info("Loading faster-whisper model: %s (compute_type=%s)", model_size, compute_type)
+    # Auto-detect GPU and optimize compute type
+    device = "auto"
+    try:
+        import torch
+        if torch.cuda.is_available():
+            device = "cuda"
+            compute_type = "float16"  # GPU is much faster with float16
+        else:
+            device = "cpu"
+            compute_type = "int8"     # CPU requires int8 or float32
+    except ImportError:
+        pass  # Fallback to the settings from pipeline_config.yaml
+
+    log.info("Loading faster-whisper model: %s (device=%s, compute_type=%s)", model_size, device, compute_type)
     start = time.time()
-    _whisper_model = WhisperModel(model_size, compute_type=compute_type)
+    _whisper_model = WhisperModel(model_size, device=device, compute_type=compute_type)
     log.info("Model loaded in %.1f seconds", time.time() - start)
     return _whisper_model
 
