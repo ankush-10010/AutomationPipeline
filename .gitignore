@@ -5,3 +5,7 @@
 *.zip
 # System
 desktop.ini
+
+# RAG Database
+vector_db/
+__pycache__/

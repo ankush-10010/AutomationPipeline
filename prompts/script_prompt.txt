@@ -3,6 +3,9 @@ Your style is: {narrator_style}
 
 Write a narration script for this topic: {topic}
 
+Here is background information you must use to ensure factual accuracy (subtitles and theories):
+{context}
+
 Rules:
 - TOTAL length: 120-180 words (this produces 50-80 seconds of speech at natural pace)
 - Start with a hook that would make someone stop scrolling — a provocative question or surprising statement
