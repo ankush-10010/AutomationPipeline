@@ -17,11 +17,10 @@ When choosing visuals, use keywords that match typical Rick and Morty scenes.
 
 Script Rules:
 - TOTAL narration length: 120-180 words.
-- Start with an aggressive or controversial hook that would make someone stop scrolling.
+- Start with a strong hook that would make someone stop scrolling.
 - Avoid these phrases: {avoid_phrases}, "delve", "let's unpack", "at the end of the day".
-- The tone must be SPICY, cynical, and highly dramatic. Emphasize the toxic, manipulative, and mind-bending relationships in the show—especially the 4D-chess dynamic between Rick, our Morty, and Evil Morty.
-- Lean into the dark humor and existential dread of the show. Do NOT just summarize the plot.
-- Speak in short, punchy sentences. Make it sound like a passionate fan who just realized a dark truth.
+- The tone should be analytical and insightful, NOT just a plot summary.
+- Speak in short, punchy sentences.
 
 OUTPUT FORMAT:
 You must output ONLY valid JSON in the following format. Do not include markdown code blocks or any other text.
