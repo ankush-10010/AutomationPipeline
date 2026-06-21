@@ -742,6 +742,7 @@ def run_pipeline(
     audio_file: Optional[str] = None,
     privacy: Optional[str] = None,
     schedule_time: Optional[str] = None,
+    use_kaggle: bool = False,
 ) -> None:
     """Run the AI Explainer pipeline (full or partial)."""
 
@@ -758,6 +759,20 @@ def run_pipeline(
         else:
             log.info("Resuming from run %s (last completed: %s)",
                      state.get("run_id"), state.get("last_completed_phase"))
+            
+            if state.get("status") == "paused_for_kaggle":
+                log.info("Resuming after Super-Kaggle workflow. Assuming TTS, Caption, and Match are done.")
+                script_path_str = state.get("phase_outputs", {}).get("script_path", "")
+                stem = Path(script_path_str).stem if script_path_str else "unknown"
+                manifest_path = PROJECT_ROOT / "output" / f"manifest_{stem}.json"
+                audio_path = PROJECT_ROOT / "audio" / f"{stem}.wav"
+                
+                state.setdefault("phase_outputs", {})
+                state["phase_outputs"]["manifest_path"] = str(manifest_path)
+                state["phase_outputs"]["audio_path"] = str(audio_path)
+                state["last_completed_phase"] = "match"
+                state["status"] = "running"
+                save_state(state)
     else:
         state = _default_state()
 
@@ -859,6 +874,18 @@ def run_pipeline(
 
         state["last_completed_phase"] = p
         save_state(state)
+
+        if p == "script_gen" and use_kaggle:
+            print("\n" + "=" * 60)
+            print("⏸️  PAUSED FOR KAGGLE")
+            print("=" * 60)
+            print("Upload the approved script text, `clip_index.json`, and `config/show_config.yaml` to Kaggle.")
+            print("Run the Super-Kaggle notebook.")
+            print("Download the ZIP, extract it to the project root, and then run with --resume.\n")
+            
+            state["status"] = "paused_for_kaggle"
+            save_state(state)
+            return
 
     # ── Done ─────────────────────────────────────────────────
     if phase == "all" and not dry_run:
@@ -979,6 +1006,11 @@ Phases (in order):
         default=None,
         help="Schedule publish time (ISO 8601, e.g. 2026-07-01T14:00:00+05:30).",
     )
+    parser.add_argument(
+        "--use-kaggle",
+        action="store_true",
+        help="Use Super-Kaggle workflow. Pauses after script generation.",
+    )
 
     return parser
 
@@ -998,6 +1030,7 @@ def main():
         audio_file=args.audio,
         privacy=args.privacy,
         schedule_time=args.schedule,
+        use_kaggle=args.use_kaggle,
     )
 
 

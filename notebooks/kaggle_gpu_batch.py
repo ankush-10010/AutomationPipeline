@@ -23,9 +23,11 @@ Cell structure:
   Cell 2: Configuration
   Cell 3: Load XTTS-v2 model
   Cell 4: Generate audio from text files
-  Cell 5: Load Stable Diffusion XL
-  Cell 6: Generate fallback images
-  Cell 7: Package outputs for download
+  Cell 5: Generate word-level captions (faster-whisper)
+  Cell 6: Match segments to clips
+  Cell 7: Load Stable Diffusion XL
+  Cell 8: Generate AI images for unmatched segments
+  Cell 9: Package outputs for download
 """
 
 # %% Cell 1: Install Dependencies
@@ -42,6 +44,10 @@ def install(package):
 
 # TTS (Coqui XTTS-v2)
 install("TTS>=0.22.0")
+
+# Captioning
+install("faster-whisper>=1.0.0")
+install("PyYAML>=6.0.1")
 
 # Image generation
 install("diffusers>=0.25.0")
@@ -69,11 +75,15 @@ from pathlib import Path
 # Outputs go to /kaggle/working/
 INPUT_DIR = Path("/kaggle/input/explainer-scripts")  # Your uploaded .txt files
 AUDIO_OUTPUT_DIR = Path("/kaggle/working/audio")
+CAPTIONS_OUTPUT_DIR = Path("/kaggle/working/captions")
 IMAGES_OUTPUT_DIR = Path("/kaggle/working/images")
+MANIFEST_OUTPUT_DIR = Path("/kaggle/working/output")
 
 # Create output directories
 AUDIO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+CAPTIONS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 IMAGES_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+MANIFEST_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # --- XTTS-v2 Settings -----------------------------------------------------
 XTTS_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
@@ -93,7 +103,9 @@ GUIDANCE_SCALE = 7.5
 
 print(f"📁 Input dir:  {INPUT_DIR}")
 print(f"🔊 Audio dir:  {AUDIO_OUTPUT_DIR}")
+print(f"📝 Captions dir: {CAPTIONS_OUTPUT_DIR}")
 print(f"🖼️  Images dir: {IMAGES_OUTPUT_DIR}")
+print(f"📄 Output dir: {MANIFEST_OUTPUT_DIR}")
 print(f"✅ Configuration ready!")
 
 
@@ -184,7 +196,186 @@ else:
     print(f"\n🎉 Audio generation complete! {len(audio_results)}/{len(txt_files)} files in {total_elapsed:.0f}s")
 
 
-# %% Cell 5: Load Stable Diffusion XL (for Fallback Images)
+# %% Cell 5: Generate Word-Level Captions
+# =============================================================================
+# Generate word-level captions from audio using faster-whisper.
+# =============================================================================
+
+import json
+from faster_whisper import WhisperModel
+
+print("🔄 Loading Faster Whisper model...")
+whisper_model = WhisperModel("base", device="cuda" if torch.cuda.is_available() else "cpu", compute_type="float16")
+print("✅ Faster Whisper loaded!")
+
+print(f"📝 Captioning audio files in {AUDIO_OUTPUT_DIR}...")
+for wav_path in sorted(AUDIO_OUTPUT_DIR.glob("*.wav")):
+    print(f"  📝 Processing {wav_path.name}...")
+    segments, info = whisper_model.transcribe(str(wav_path), word_timestamps=True)
+    
+    caption_data = {"audio_file": str(wav_path), "segments": []}
+    
+    for i, segment in enumerate(segments):
+        words = []
+        for word in segment.words:
+            words.append({
+                "word": word.word,
+                "start": word.start,
+                "end": word.end,
+                "score": word.probability
+            })
+        
+        caption_data["segments"].append({
+            "id": i,
+            "text": segment.text.strip(),
+            "start": segment.start,
+            "end": segment.end,
+            "words": words
+        })
+    
+    out_path = CAPTIONS_OUTPUT_DIR / f"{wav_path.stem}.json"
+    with open(out_path, "w") as f:
+        json.dump(caption_data, f, indent=2)
+    print(f"  ✅ Saved captions to {out_path.name}")
+
+
+# %% Cell 6: Match Segments to Clips
+# =============================================================================
+# Match caption segments to clips or generate AI image prompts.
+# =============================================================================
+
+import yaml
+import re
+
+CLIP_INDEX_PATH = INPUT_DIR / "clip_index.json"
+SHOW_CONFIG_PATH = INPUT_DIR / "show_config.yaml"
+
+clips = []
+if CLIP_INDEX_PATH.exists():
+    try:
+        with open(CLIP_INDEX_PATH, "r") as f:
+            data = json.load(f)
+            clips = data.get("clips", []) if isinstance(data, dict) else data
+        print(f"✅ Loaded {len(clips)} clips from {CLIP_INDEX_PATH.name}")
+    except Exception as e:
+        print(f"⚠️ Error loading clip index: {e}")
+
+show_config = {}
+if SHOW_CONFIG_PATH.exists():
+    try:
+        with open(SHOW_CONFIG_PATH, "r") as f:
+            show_config = yaml.safe_load(f) or {}
+        print(f"✅ Loaded show config from {SHOW_CONFIG_PATH.name}")
+    except Exception as e:
+        print(f"⚠️ Error loading show config: {e}")
+
+_STOP_WORDS = frozenset(
+    "a an the is are was were be been being have has had do does did "
+    "will would shall should may might can could of in to for on with "
+    "at by from as into about between through after before above below "
+    "and or but not no nor so yet both either neither each every all "
+    "some any few more most other such than too very it its he him his "
+    "she her they them their this that these those what which who whom "
+    "how when where why i me my we us our you your just also still even "
+    "then now here there if only really actually like well much many "
+    "got get goes going gone".split()
+)
+
+def _normalize(text):
+    return re.sub(r"[^a-z0-9\s]", "", text.lower())
+
+def extract_keywords(text):
+    words = _normalize(text).split()
+    return {w for w in words if w not in _STOP_WORDS and len(w) > 1}
+
+def score_clip_keyword(segment_text, clip, show_config):
+    score = 0.0
+    seg_keywords = extract_keywords(segment_text)
+    
+    seg_characters = set()
+    for char in show_config.get("characters", []):
+        for name in [char["name"]] + char.get("aliases", []):
+            if name.lower() in segment_text.lower():
+                seg_characters.add(name.lower())
+    
+    seg_locations = set()
+    for loc in show_config.get("locations", []):
+        if loc.lower() in segment_text.lower():
+            seg_locations.add(loc.lower())
+            
+    clip_chars = {c.lower() for c in clip.get("characters", [])}
+    clip_loc = clip.get("location", "").lower()
+    clip_action = _normalize(clip.get("action", ""))
+    clip_tags = {t.lower() for t in clip.get("tags", [])}
+    
+    char_overlap = seg_characters & clip_chars
+    score += len(char_overlap) * 3.0
+    
+    if clip_loc and clip_loc in seg_locations:
+        score += 2.0
+        
+    action_words = extract_keywords(clip_action)
+    score += len(seg_keywords & action_words) * 2.0
+    
+    score += len(seg_keywords & clip_tags) * 1.0
+    return score
+
+def generate_ai_image_prompt(segment_text, show_config):
+    show_name = show_config.get("display_name", "the show")
+    clean = re.sub(r"[\"']", "", segment_text)
+    if len(clean) > 120:
+        clean = clean[:120] + "..."
+    return f"Cinematic still from {show_name}, depicting: {clean}. Dramatic lighting, animation style, 9:16 vertical composition, high detail, vibrant colors."
+
+for cap_path in sorted(CAPTIONS_OUTPUT_DIR.glob("*.json")):
+    print(f"  🔍 Matching segments for {cap_path.name}...")
+    with open(cap_path, "r") as f:
+        cap_data = json.load(f)
+        
+    manifest = {"audio_file": cap_data.get("audio_file", ""), "segments": [], "stats": {"matched": 0, "fallback": 0, "total": 0}}
+    
+    for seg in cap_data.get("segments", []):
+        manifest["stats"]["total"] += 1
+        seg_text = seg.get("text", "")
+        best_clip = None
+        best_score = 0.0
+        
+        for clip in clips:
+            s = score_clip_keyword(seg_text, clip, show_config)
+            if s > best_score:
+                best_score = s
+                best_clip = clip
+                
+        entry = {
+            "id": seg.get("id"),
+            "text": seg_text,
+            "start": seg.get("start"),
+            "end": seg.get("end"),
+            "words": seg.get("words", [])
+        }
+        
+        if best_score >= 1 and best_clip:
+            entry["visual_type"] = "clip"
+            entry["visual_source"] = best_clip.get("filename", "")
+            entry["clip_start"] = 0.0
+            entry["match_score"] = round(best_score, 2)
+            manifest["stats"]["matched"] += 1
+        else:
+            entry["visual_type"] = "ai_image"
+            entry["visual_source"] = generate_ai_image_prompt(seg_text, show_config)
+            entry["clip_start"] = 0.0
+            entry["match_score"] = 0.0
+            manifest["stats"]["fallback"] += 1
+            
+        manifest["segments"].append(entry)
+        
+    out_manifest = MANIFEST_OUTPUT_DIR / f"manifest_{cap_path.stem}.json"
+    with open(out_manifest, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"  ✅ Saved manifest to {out_manifest.name} ({manifest['stats']['matched']} matched, {manifest['stats']['fallback']} fallback)")
+
+
+# %% Cell 7: Load Stable Diffusion XL (for Fallback Images)
 # =============================================================================
 # Loads SDXL for generating images when no matching clip is available.
 # Skip this cell if you don't need fallback images.
@@ -195,11 +386,14 @@ from diffusers import DiffusionPipeline, StableDiffusionXLImg2ImgPipeline
 
 print("🔄 Loading Stable Diffusion XL base model...")
 
-# Free TTS GPU memory first (if TTS is no longer needed)
+# Free TTS and Whisper GPU memory first
 if "tts" in dir():
     del tts
-    torch.cuda.empty_cache()
     print("   Freed TTS model from GPU memory")
+if "whisper_model" in dir():
+    del whisper_model
+    print("   Freed Whisper model from GPU memory")
+torch.cuda.empty_cache()
 
 # Detect device
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -232,45 +426,13 @@ if USE_REFINER:
 print("✅ SDXL models loaded!")
 
 
-# %% Cell 6: Generate Fallback Images
+# %% Cell 8: Generate Fallback Images
 # =============================================================================
-# Define prompts and generate images. These are used as background visuals
-# for video segments that don't have matching clips.
-#
-# Edit the IMAGE_PROMPTS list to match your video's content.
+# Reads manifest.json and generates images for segments marked as "ai_image".
 # =============================================================================
 
 import json
 from tqdm import tqdm
-
-# Define image prompts — one per scene/segment that needs a fallback image
-# Format: {"name": "filename_stem", "prompt": "description for SDXL"}
-IMAGE_PROMPTS = [
-    {
-        "name": "intro_bg",
-        "prompt": (
-            "A cinematic sci-fi scene with glowing portals and cosmic energy, "
-            "dark background with vibrant neon colors, digital art style, "
-            "vertical composition 9:16 aspect ratio, highly detailed"
-        ),
-    },
-    {
-        "name": "explanation_bg",
-        "prompt": (
-            "Abstract visualization of neural networks and data flowing, "
-            "dark purple and blue tones with golden highlights, "
-            "futuristic technology concept art, vertical composition, 4K detailed"
-        ),
-    },
-    {
-        "name": "conclusion_bg",
-        "prompt": (
-            "Epic wide shot of a futuristic city at sunset with dramatic lighting, "
-            "cyberpunk aesthetic, warm orange and cool blue contrast, "
-            "vertical composition 9:16, cinematic concept art"
-        ),
-    },
-]
 
 # Negative prompt to improve quality
 NEGATIVE_PROMPT = (
@@ -316,36 +478,57 @@ def generate_image(prompt: str, output_path: Path, negative_prompt: str = NEGATI
     return image
 
 
-print(f"🖼️  Generating {len(IMAGE_PROMPTS)} fallback images...")
 image_results = []
+total_images_to_generate = 0
 
-for item in tqdm(IMAGE_PROMPTS, desc="Generating images"):
-    name = item["name"]
-    prompt = item["prompt"]
-    output_path = IMAGES_OUTPUT_DIR / f"{name}.png"
+# First, count how many images we need
+for manifest_path in MANIFEST_OUTPUT_DIR.glob("*.json"):
+    with open(manifest_path, "r") as f:
+        manifest = json.load(f)
+    for seg in manifest.get("segments", []):
+        if seg.get("visual_type") == "ai_image":
+            total_images_to_generate += 1
 
-    try:
-        start = time.time()
-        generate_image(prompt, output_path)
-        elapsed = time.time() - start
+print(f"🖼️  Generating {total_images_to_generate} fallback images from manifests...")
 
-        size_mb = output_path.stat().st_size / (1024 * 1024)
-        print(f"  ✅ {name}.png ({size_mb:.1f} MB, {elapsed:.1f}s)")
-        image_results.append({"name": name, "path": str(output_path), "prompt": prompt})
-
-    except Exception as e:
-        print(f"  ❌ Failed: {name} — {e}")
+if total_images_to_generate > 0:
+    with tqdm(total=total_images_to_generate, desc="Generating images") as pbar:
+        for manifest_path in MANIFEST_OUTPUT_DIR.glob("*.json"):
+            with open(manifest_path, "r") as f:
+                manifest = json.load(f)
+            
+            for seg in manifest.get("segments", []):
+                if seg.get("visual_type") == "ai_image":
+                    prompt = seg.get("visual_source", "")
+                    seg_id = seg.get("id", 0)
+                    name = f"seg_{seg_id:04d}"
+                    output_path = IMAGES_OUTPUT_DIR / f"{name}.png"
+                    
+                    if not output_path.exists():
+                        try:
+                            start = time.time()
+                            generate_image(prompt, output_path)
+                            elapsed = time.time() - start
+                            
+                            size_mb = output_path.stat().st_size / (1024 * 1024)
+                            image_results.append({"name": name, "path": str(output_path), "prompt": prompt})
+                        except Exception as e:
+                            print(f"  ❌ Failed: {name} — {e}")
+                    else:
+                        image_results.append({"name": name, "path": str(output_path), "prompt": prompt})
+                        
+                    pbar.update(1)
 
 # Save metadata for downstream pipeline
 metadata_path = IMAGES_OUTPUT_DIR / "generation_metadata.json"
 with open(metadata_path, "w") as f:
     json.dump(image_results, f, indent=2)
 
-print(f"\n🎉 Image generation complete! {len(image_results)}/{len(IMAGE_PROMPTS)} images generated")
+print(f"\n🎉 Image generation complete! {len(image_results)} images ready")
 print(f"   Metadata saved to {metadata_path}")
 
 
-# %% Cell 7: Package Outputs for Download
+# %% Cell 9: Package Outputs for Download
 # =============================================================================
 # Creates a zip archive of all generated files for easy download from Kaggle.
 # =============================================================================
@@ -361,10 +544,20 @@ for f in sorted(AUDIO_OUTPUT_DIR.glob("*")):
     size = f.stat().st_size / (1024 * 1024)
     print(f"   {f.name:30s} {size:.1f} MB")
 
+print(f"\n📝 Captions ({CAPTIONS_OUTPUT_DIR}):")
+for f in sorted(CAPTIONS_OUTPUT_DIR.glob("*")):
+    size = f.stat().st_size / 1024
+    print(f"   {f.name:30s} {size:.1f} KB")
+
 print(f"\n🖼️  Images ({IMAGES_OUTPUT_DIR}):")
 for f in sorted(IMAGES_OUTPUT_DIR.glob("*")):
     size = f.stat().st_size / (1024 * 1024)
     print(f"   {f.name:30s} {size:.1f} MB")
+
+print(f"\n📄 Output ({MANIFEST_OUTPUT_DIR}):")
+for f in sorted(MANIFEST_OUTPUT_DIR.glob("*")):
+    size = f.stat().st_size / 1024
+    print(f"   {f.name:30s} {size:.1f} KB")
 
 # Create zip for download
 print(f"\n📦 Creating zip archive...")
