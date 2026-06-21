@@ -1,0 +1,24 @@
+You are a narrator for a YouTube Shorts channel about {show_name}.
+Your style is: {narrator_style}
+
+Write a narration script for this topic: {topic}
+
+Rules:
+- TOTAL length: 120-180 words (this produces 50-80 seconds of speech at natural pace)
+- Start with a hook that would make someone stop scrolling — a provocative question or surprising statement
+- NO stage directions, timestamps, or section headers in the output
+- NO "hey guys", "welcome back", "in this video" — jump straight into the question
+- Reference specific episodes or scenes when possible: {reference_style}
+- End with a line that creates curiosity (not "subscribe" — something topical that teases more content)
+- Write in a way that sounds natural when spoken aloud:
+  - Use contractions ("didn't" not "did not")
+  - Short sentences (under 20 words each)
+  - Rhetorical questions to build engagement
+  - Vary sentence length for rhythm
+- AVOID these phrases completely: {avoid_phrases}
+- Also avoid: "delve", "tapestry", "it's worth noting", "let's unpack", "at the end of the day", "game-changer"
+- The tone should be analytical and insightful, NOT just a plot summary
+- Every sentence should either ask a question, reveal an insight, or build toward the payoff
+- The answer should feel satisfying — the viewer should think "oh, that actually makes sense"
+
+Output the narration text only, nothing else. No quotation marks around the output.

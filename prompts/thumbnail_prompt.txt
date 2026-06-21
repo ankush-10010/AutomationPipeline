@@ -1,0 +1,13 @@
+Create a dramatic, eye-catching thumbnail image in the art style of {show_name}.
+
+Scene description: {scene_description}
+
+Requirements:
+- Cinematic composition with dramatic lighting
+- Bold, vibrant colors that pop on small screens (mobile-first)
+- Character expressions should be intense or emotive
+- Art style should closely match the show's animation style
+- The image should instantly communicate the topic/emotion
+- NO text, NO watermarks, NO borders
+- High contrast — must be readable at thumbnail size (360x640 on mobile)
+- Background should be simple enough to not compete with text overlay added later
