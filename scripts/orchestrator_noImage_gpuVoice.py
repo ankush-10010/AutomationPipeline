@@ -183,7 +183,7 @@ def run_topic_mine(
     return state.get("topic")
 
 
-def run_script_gen(
+def run_script_gen( 
     state: Dict,
     pipeline_cfg: Dict,
     show_slug: str,
@@ -257,6 +257,43 @@ def run_script_gen(
         log.info("Auto-approve enabled — skipping review checkpoint")
 
     state["phase_outputs"]["script_path"] = str(script_path)
+
+    # ── Extract and save pure text script ─────────────────────
+    import re
+    try:
+        with open(script_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        clean_lines = []
+        for line in lines:
+            text = line.strip()
+            if not text:
+                continue
+            # Remove prefixes like "Narrator:", "Voiceover:", "**Host:**"
+            text = re.sub(r"^\**\s*(?:Narrator|Voiceover|Host|Speaker|V/O)\s*\**\s*:\s*", "", text, flags=re.IGNORECASE)
+            # Also remove bracketed or parenthesized speaker labels
+            text = re.sub(r"^\[.*?\]\s*:\s*", "", text)
+            text = re.sub(r"^\(.*?\)\s*:\s*", "", text)
+            if text:
+                clean_lines.append(text)
+        
+        pure_text = "\n\n".join(clean_lines)
+        
+        # Save to topics/approved/{name}_clean.txt to not overwrite the original
+        txt_path1 = script_path.with_name(script_path.stem + "_clean.txt")
+        txt_path1.write_text(pure_text, encoding='utf-8')
+        
+        # Save to output/script.txt for easy access
+        output_dir = get_project_path("output_dir", pipeline_cfg)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        txt_path2 = output_dir / "script.txt"
+        txt_path2.write_text(pure_text, encoding='utf-8')
+        
+        log.info("Pure text extracted to:\n    - %s\n    - %s", txt_path1, txt_path2)
+        state["phase_outputs"]["script_txt_path"] = str(txt_path1)
+    except Exception as e:
+        log.warning("Failed to extract text: %s", e)
+
     return script_path
 
 
@@ -290,11 +327,15 @@ def run_tts(
             log.error("Supplied audio file not found: %s", audio_file)
             return None
 
-    script_path_str = state.get("phase_outputs", {}).get("script_path")
-    if not script_path_str:
+    script_txt_path_str = state.get("phase_outputs", {}).get("script_txt_path")
+    if not script_txt_path_str:
+        # Fallback for older states
+        script_txt_path_str = state.get("phase_outputs", {}).get("script_path")
+
+    if not script_txt_path_str:
         log.error("No script file in state -- run script_gen first")
         return None
-    script_path = Path(script_path_str)
+    script_path = Path(script_txt_path_str)
 
     tts_cfg = pipeline_cfg.get("tts", {})
     engine = tts_cfg.get("engine", "piper")
@@ -326,48 +367,13 @@ def run_tts(
         return audio_path
 
     else:
-        # --- NEW: Automatically extract pure text for Colab ---
-        import json
-        import re
-        try:
-            with open(script_path, 'r', encoding='utf-8') as f:
-                script_data = json.load(f)
-            
-            clean_lines = []
-            for seg in script_data.get("segments", []):
-                text = seg.get("text", "").strip()
-                # Remove prefixes like "Narrator:", "Voiceover:", "**Host:**"
-                text = re.sub(r"^\**\s*(?:Narrator|Voiceover|Host|Speaker|V/O)\s*\**\s*:\s*", "", text, flags=re.IGNORECASE)
-                # Also remove bracketed or parenthesized speaker labels
-                text = re.sub(r"^\[.*?\]\s*:\s*", "", text)
-                text = re.sub(r"^\(.*?\)\s*:\s*", "", text)
-                if text:
-                    clean_lines.append(text)
-            
-            pure_text = "\n\n".join(clean_lines)
-            
-            # Save to topics/approved/{name}.txt
-            txt_path1 = script_path.with_suffix('.txt')
-            txt_path1.write_text(pure_text, encoding='utf-8')
-            
-            # Save to output/script.txt for easy access
-            output_dir = get_project_path("output_dir", pipeline_cfg)
-            output_dir.mkdir(parents=True, exist_ok=True)
-            txt_path2 = output_dir / "script.txt"
-            txt_path2.write_text(pure_text, encoding='utf-8')
-            
-            extracted_msg = f"  ✓ Pure text extracted to:\n    - {txt_path1}\n    - {txt_path2}"
-        except Exception as e:
-            extracted_msg = f"  ✗ Failed to extract text: {e}"
-
         log.warning(
             "Please generate audio using the Colab notebook: notebooks/orchestrator_noImage_gpuVoice.ipynb"
         )
         print("\n" + "=" * 60)
         print("⚠️  COLAB GPU TTS REQUIRED")
         print("=" * 60)
-        print(f"\n  Original JSON file: {script_path}")
-        print(extracted_msg)
+        print(f"\n  Script text file: {script_path}")
         print("\n  Steps:")
         print("  1. Upload output/script.txt to your Colab notebook.")
         print("  2. Run notebooks/orchestrator_noImage_gpuVoice.ipynb on Colab.")

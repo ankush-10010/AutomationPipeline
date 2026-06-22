@@ -12,8 +12,6 @@ import time
 import requests
 from pathlib import Path
 
-from rag_manager import RAGManager
-
 from config_loader import (
     setup_logging,
     load_pipeline_config,
@@ -36,9 +34,13 @@ def sanitize_filename(topic: str, max_length: int = 80) -> str:
     Convert a topic string into a safe, readable filename.
     Example: "Why did Rick destroy the Citadel?" → "why_did_rick_destroy_the_citadel"
     """
+    # Lowercase and strip
     name = topic.lower().strip()
+    # Remove non-alphanumeric chars (keep spaces and hyphens)
     name = re.sub(r"[^\w\s-]", "", name)
+    # Collapse whitespace / hyphens to underscores
     name = re.sub(r"[\s-]+", "_", name)
+    # Trim to max length
     name = name[:max_length].rstrip("_")
     return name
 
@@ -50,7 +52,6 @@ def build_script_prompt(
     topic: str,
     show: dict,
     pipeline_config: dict,
-    rag_manager: RAGManager = None,
 ) -> str:
     """
     Load the script prompt template and fill placeholders from the show
@@ -70,15 +71,10 @@ def build_script_prompt(
     avoid_phrases = prompt_tuning.get("avoid_phrases", [])
     avoid_str = ", ".join(f'"{p}"' for p in avoid_phrases)
 
-    context = ""
-    if rag_manager:
-        context = rag_manager.get_combined_context(topic)
-
     prompt = template.format(
         show_name=show.get("display_name", "Unknown Show"),
         narrator_style=narrator_style.strip(),
         topic=topic,
-        context=context,
         reference_style=reference_style.strip(),
         avoid_phrases=avoid_str,
     )
@@ -175,12 +171,11 @@ def generate_script_for_topic(
     topic: str,
     show: dict,
     pipeline_config: dict,
-    rag_manager: RAGManager = None,
 ) -> Path:
     """Build prompt, call LLM, save script. Returns the output file path."""
     log.info("Generating script for: %s", topic)
 
-    prompt = build_script_prompt(topic, show, pipeline_config, rag_manager)
+    prompt = build_script_prompt(topic, show, pipeline_config)
     script_text = call_ollama(prompt, pipeline_config)
 
     if not script_text.strip():
@@ -197,7 +192,6 @@ def process_batch(
     batch_size: int,
     show: dict,
     pipeline_config: dict,
-    rag_manager: RAGManager = None,
 ) -> list:
     """
     Pop up to *batch_size* topics from queue.json, generate scripts for each,
@@ -224,7 +218,7 @@ def process_batch(
 
         log.info("--- [%d/%d] ---", i, len(to_process))
         try:
-            path = generate_script_for_topic(topic_text, show, pipeline_config, rag_manager)
+            path = generate_script_for_topic(topic_text, show, pipeline_config)
             output_paths.append(path)
         except SystemExit:
             log.error("Failed on topic: %s — skipping", topic_text[:60])
@@ -270,18 +264,17 @@ def main():
         parser.error("Provide either --topic 'some topic' or --batch N")
 
     pipeline_config = load_pipeline_config()
-    rag_manager = RAGManager(pipeline_config)
     slug, show = get_active_show(args.show)
     log.info("=== Script Generation for '%s' ===", show["display_name"])
 
     if args.topic:
         # Single topic mode
-        path = generate_script_for_topic(args.topic, show, pipeline_config, rag_manager)
+        path = generate_script_for_topic(args.topic, show, pipeline_config)
         log.info("✓ Done — script saved to %s", path)
 
     elif args.batch:
         # Batch mode
-        paths = process_batch(args.batch, show, pipeline_config, rag_manager)
+        paths = process_batch(args.batch, show, pipeline_config)
         log.info("✓ Done — generated %d scripts", len(paths))
         for p in paths:
             log.info("  → %s", p)
