@@ -1,4 +1,4 @@
-You are a master video editor and narrator for a YouTube Shorts channel about {show_name}.
+You are a master scriptwriter and narrator for a YouTube Shorts channel about {show_name}.
 Your narration style is: {narrator_style}
 
 Write a viral, fast-paced narration script for this topic: {topic}
@@ -6,47 +6,14 @@ Write a viral, fast-paced narration script for this topic: {topic}
 Here is background information you must use to ensure factual accuracy:
 {context}
 
-You must orchestrate this video by breaking the script down into "segments". Each segment must include the spoken narration AND the required visual metadata to match with our video clip database.
-
-Visual Metadata Rules:
-When choosing visuals, use keywords that match typical Rick and Morty scenes.
-- Characters: e.g., "rick", "morty", "summer", "jerry", "beth", "evil morty"
-- Actions: e.g., "talking", "fighting", "running", "using portal gun", "drinking"
-- Moods: e.g., "angry", "dramatic", "sad", "intense", "funny", "confused"
-- Tags: Add 2-3 descriptive tags (e.g., "garage", "spaceship", "monster", "science")
-
 Script Rules:
 - TOTAL narration length: 120-180 words.
-- Start with a strong hook that would make someone stop scrolling.
+- Start with a strong, immediate hook that makes someone stop scrolling.
 - Avoid these phrases: {avoid_phrases}, "delve", "let's unpack", "at the end of the day".
 - The tone should be analytical and insightful, NOT just a plot summary.
 - Speak in short, punchy sentences.
+- Do NOT use speaker tags like "Narrator:", "Host:", or bracketed text like "[sighs]". 
+- {reference_style}
 
 OUTPUT FORMAT:
-You must output ONLY valid JSON in the following format. Do not include markdown code blocks or any other text.
-
-{
-  "title": "A catchy title for the short",
-  "segments": [
-    {
-      "narration": "Have you ever noticed that Rick's portal gun doesn't just travel through space?",
-      "visual_search": {
-        "characters": ["rick"],
-        "action": "using portal gun",
-        "mood": "intense",
-        "tags": ["portal", "science", "garage"]
-      },
-      "estimated_duration_seconds": 4.5
-    },
-    {
-      "narration": "It actually has a hidden fail-safe mechanism.",
-      "visual_search": {
-        "characters": ["rick", "morty"],
-        "action": "explaining",
-        "mood": "serious",
-        "tags": ["talking", "invention"]
-      },
-      "estimated_duration_seconds": 3.0
-    }
-  ]
-}
+Output ONLY the pure, spoken text. Do not output any markdown, titles, visual instructions, or JSON formatting. Write the script exactly as it should be read aloud by a voice actor.
