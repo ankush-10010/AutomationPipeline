@@ -34,6 +34,7 @@ Usage:
 
 import argparse
 import json
+import re
 import shutil
 import sys
 import time
@@ -133,6 +134,49 @@ def _next_phase(current: Optional[str]) -> Optional[str]:
         return PHASES[idx + 1] if idx + 1 < len(PHASES) else None
     except ValueError:
         return None
+
+
+# ============================================================================
+# Per-topic output folder management
+# ============================================================================
+
+def _sanitize_folder_name(topic: str, max_length: int = 80) -> str:
+    """Convert a topic string into a safe, readable folder name."""
+    name = topic.lower().strip()
+    name = re.sub(r"[^\w\s-]", "", name)
+    name = re.sub(r"[\s-]+", "_", name)
+    name = name[:max_length].rstrip("_")
+    return name
+
+
+def create_topic_output_folder(topic: str, pipeline_cfg: Dict) -> Path:
+    """Create a per-topic output folder under output/.
+
+    If the folder already exists (duplicate topic run), appends a numeric
+    suffix: topicname/ → topicname1/ → topicname2/ → ...
+
+    Returns the absolute path to the created folder.
+    """
+    output_root = get_project_path("output_dir", pipeline_cfg)
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    base_name = _sanitize_folder_name(topic)
+    candidate = output_root / base_name
+
+    if not candidate.exists():
+        candidate.mkdir(parents=True, exist_ok=True)
+        log.info("Created topic output folder: %s", candidate)
+        return candidate
+
+    # Folder exists — find next available suffix
+    counter = 1
+    while True:
+        candidate = output_root / f"{base_name}{counter}"
+        if not candidate.exists():
+            candidate.mkdir(parents=True, exist_ok=True)
+            log.info("Created topic output folder (duplicate #%d): %s", counter, candidate)
+            return candidate
+        counter += 1
 
 
 # ============================================================================
@@ -258,8 +302,12 @@ def run_script_gen(
 
     state["phase_outputs"]["script_path"] = str(script_path)
 
+    # ── Create per-topic output folder ────────────────────────
+    topic_folder = create_topic_output_folder(topic, pipeline_cfg)
+    state["phase_outputs"]["topic_folder"] = str(topic_folder)
+    log.info("Topic output folder: %s", topic_folder)
+
     # ── Extract and save pure text script ─────────────────────
-    import re
     try:
         with open(script_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -283,11 +331,13 @@ def run_script_gen(
         txt_path1 = script_path.with_name(script_path.stem + "_clean.txt")
         txt_path1.write_text(pure_text, encoding='utf-8')
         
-        # Save to output/script.txt for easy access
-        output_dir = get_project_path("output_dir", pipeline_cfg)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        txt_path2 = output_dir / "script.txt"
+        # Save to topic output folder
+        txt_path2 = topic_folder / "script.txt"
         txt_path2.write_text(pure_text, encoding='utf-8')
+        
+        # Also copy the raw script into the topic folder
+        raw_script_dest = topic_folder / "script_raw.txt"
+        shutil.copy2(str(script_path), str(raw_script_dest))
         
         log.info("Pure text extracted to:\n    - %s\n    - %s", txt_path1, txt_path2)
         state["phase_outputs"]["script_txt_path"] = str(txt_path1)
@@ -561,10 +611,17 @@ def run_assemble(
     manifest = load_json(manifest_path)
     video_cfg = pipeline_cfg.get("video", {})
 
-    output_dir = get_project_path("output_dir", pipeline_cfg)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    run_id = state.get("run_id", "unknown")
-    output_path = output_dir / f"final_{run_id}.mp4"
+    # Use the per-topic folder if available, otherwise fall back to output/
+    topic_folder_str = state.get("phase_outputs", {}).get("topic_folder")
+    if topic_folder_str:
+        topic_folder = Path(topic_folder_str)
+        topic_folder.mkdir(parents=True, exist_ok=True)
+        output_path = topic_folder / "video.mp4"
+    else:
+        output_dir = get_project_path("output_dir", pipeline_cfg)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        run_id = state.get("run_id", "unknown")
+        output_path = output_dir / f"final_{run_id}.mp4"
 
     clips_dir = str(get_project_path("clips_dir", pipeline_cfg))
     images_dir = str(get_project_path("images_dir", pipeline_cfg))
@@ -632,11 +689,18 @@ def run_thumbnail(
     from thumbnail_generator import extract_frames, pick_best_frame, compose_thumbnail
 
     thumb_cfg = pipeline_cfg.get("thumbnail", {})
-    thumb_dir = get_project_path("thumbnails_dir", pipeline_cfg)
-    thumb_dir.mkdir(parents=True, exist_ok=True)
 
-    run_id = state.get("run_id", "unknown")
-    thumb_path = thumb_dir / f"thumb_{run_id}.jpg"
+    # Save thumbnail into the per-topic folder if available
+    topic_folder_str = state.get("phase_outputs", {}).get("topic_folder")
+    if topic_folder_str:
+        topic_folder = Path(topic_folder_str)
+        topic_folder.mkdir(parents=True, exist_ok=True)
+        thumb_path = topic_folder / "thumbnail.jpg"
+    else:
+        thumb_dir = get_project_path("thumbnails_dir", pipeline_cfg)
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        run_id = state.get("run_id", "unknown")
+        thumb_path = thumb_dir / f"thumb_{run_id}.jpg"
 
     # Extract frames to a temp dir
     tmp_dir = tempfile.mkdtemp(prefix="orchestrator_thumb_")
@@ -935,10 +999,20 @@ def run_pipeline(
         state["completed_at"] = datetime.now().isoformat()
         save_state(state)
 
+        # Copy pipeline_state.json into the topic folder for record-keeping
+        topic_folder_str = state.get("phase_outputs", {}).get("topic_folder")
+        if topic_folder_str:
+            topic_folder = Path(topic_folder_str)
+            state_copy = topic_folder / "pipeline_state.json"
+            save_json(state_copy, state)
+            log.info("Pipeline state saved to topic folder: %s", state_copy)
+
         print("\n" + "=" * 60)
         print("✅  PIPELINE COMPLETE")
         print("=" * 60)
         outputs = state.get("phase_outputs", {})
+        if outputs.get("topic_folder"):
+            print(f"  Folder:  {outputs['topic_folder']}")
         if outputs.get("video_url"):
             print(f"  YouTube: {outputs['video_url']}")
         if outputs.get("video_path"):
