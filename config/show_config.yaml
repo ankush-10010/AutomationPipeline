@@ -9,23 +9,233 @@ shows:
     display_name: "Rick and Morty"
     active: true                               # Set to false to pause content for this show
 
-    # -- Characters (used for clip matching + script prompts) ----------------
+    # -- Characters (used for clip matching + script prompts + vision tagging) --
     characters:
+      # ── The Smith-Sanchez Family & Variants ──
       - name: "Rick Sanchez"
         aliases: ["Rick", "C-137", "Grandpa Rick"]
         description: "Genius alcoholic scientist, nihilistic but secretly caring"
+        visual: "light blue hair, lab coat, old man"
       - name: "Morty Smith"
-        aliases: ["Morty", "Evil Morty"]
+        aliases: ["Morty"]
         description: "Rick's anxious grandson, often the moral compass"
+        visual: "brown hair, yellow shirt, teenager"
       - name: "Summer Smith"
         aliases: ["Summer"]
         description: "Morty's older sister, increasingly competent and jaded"
+        visual: "orange hair, pink top, teenager"
       - name: "Beth Smith"
-        aliases: ["Beth", "Space Beth"]
+        aliases: ["Beth"]
         description: "Rick's daughter, horse surgeon, identity crisis"
+        visual: "blonde hair, red shirt, adult"
       - name: "Jerry Smith"
         aliases: ["Jerry"]
         description: "Beth's husband, insecure, often the butt of jokes"
+        visual: "brown hair, green shirt, adult"
+      - name: "Space Beth"
+        aliases: ["Clone Beth"]
+        description: "Beth's space-faring clone/original with a warrior edge"
+        visual: "blue eye scar, tactical space suit, adult"
+      - name: "Prime Rick"
+        aliases: ["Rick Prime", "Weird Rick"]
+        description: "The Rick who killed C-137's family, main antagonist"
+        visual: "light blue hair, futuristic leather jacket, old man"
+      - name: "Evil Morty"
+        aliases: ["President Morty", "Eye Patch Morty"]
+        description: "The Morty who escaped the Central Finite Curve"
+        visual: "brown hair, black eye patch, teenager"
+      - name: "Naruto Smith"
+        aliases: ["Giant Incest Baby"]
+        description: "Space Beth and Jerry's giant offspring"
+        visual: "giant size, space diaper, giant incest baby"
+
+      # ── Recurring Friends, Allies & Schoolmates ──
+      - name: "Mr. Poopybutthole"
+        aliases: ["Poopybutthole", "MPB"]
+        description: "Loyal family friend, shot by Beth in a parasite scare"
+        visual: "yellow cylinder head, top hat, adult"
+      - name: "Birdperson"
+        aliases: ["Phoenixperson", "BP"]
+        description: "Rick's best friend, warrior from Bird World"
+        visual: "feathered wings, bird costume, adult"
+      - name: "Squanchy"
+        aliases: []
+        description: "Cat-like party animal, Rick's old friend"
+        visual: "orange fur, blue bow tie, cat-like alien"
+      - name: "Snowball"
+        aliases: ["Snuffles"]
+        description: "The Smiths' dog made hyper-intelligent by Rick"
+        visual: "white fur, robotic mech suit, intelligent dog"
+      - name: "Mr. Meeseeks"
+        aliases: ["Meeseeks"]
+        description: "Temporary beings summoned to complete a task"
+        visual: "blue skin, no clothes, temporary creation"
+      - name: "Jessica"
+        aliases: []
+        description: "Morty's longtime crush and classmate"
+        visual: "red hair, purple skirt, teenager"
+      - name: "Brad"
+        aliases: []
+        description: "Jessica's ex-boyfriend, school jock"
+        visual: "athletic build, letterman jacket, teenager"
+      - name: "Mr. Goldenfold"
+        aliases: ["Goldenfold"]
+        description: "Morty's math teacher"
+        visual: "balding black hair, yellow sweater, adult"
+      - name: "Principal Vagina"
+        aliases: []
+        description: "Harry Herpson High School principal"
+        visual: "white hair, glasses, adult"
+      - name: "Dr. Wong"
+        aliases: []
+        description: "Family therapist, incredibly grounded"
+        visual: "black hair, professional attire, adult"
+      - name: "President Curtis"
+        aliases: ["The President", "President Andre Curtis"]
+        description: "US President, recurring frenemy of Rick"
+        visual: "black hair, sharp suit, adult"
+      - name: "Gene"
+        aliases: []
+        description: "The Smiths' neighbor"
+        visual: "brown hair, casual clothes, neighbor"
+
+      # ── Notable Antagonists & Villains ──
+      - name: "Tammy Guetermann"
+        aliases: ["Tammy"]
+        description: "Undercover Galactic Federation agent, killed Birdperson"
+        visual: "brown hair, Federation uniform, teenager"
+      - name: "Zeep Xanflorp"
+        aliases: ["Zeep"]
+        description: "Scientist inside Rick's miniverse battery"
+        visual: "purple skin, green suit, microverse scientist"
+      - name: "Mr. Needful"
+        aliases: ["The Devil", "Needful"]
+        description: "The literal Devil running a cursed antique shop"
+        visual: "mustache, vintage suit, the Devil"
+      - name: "Story Lord"
+        aliases: []
+        description: "Meta villain from the story train episode"
+        visual: "muscular build, caped suit, matrix conductor"
+      - name: "King Jellybean"
+        aliases: ["Jellybean"]
+        description: "Predatory ruler of a fantasy kingdom"
+        visual: "green jellybean shape, royal cape, king"
+      - name: "Fart"
+        aliases: []
+        description: "Telepathic gaseous being Morty tried to save"
+        visual: "glowing cloud, multi-colored, gaseous telepathic being"
+      - name: "Hemorrhage"
+        aliases: []
+        description: "Leader of the Deathstalkers in post-apocalyptic world"
+        visual: "bucket helmet, post-apocalyptic armor, Deathstalker leader"
+      - name: "Rhett Caan"
+        aliases: []
+        description: "Reality-altering being"
+        visual: "blue skin, toga, reality-altering being"
+      - name: "Concerto"
+        aliases: []
+        description: "Music-themed villain"
+        visual: "piano head, tuxedo, music-themed villain"
+
+      # ── The Vindicators ──
+      - name: "Vance Maximus"
+        aliases: ["Vance"]
+        description: "Leader of the Vindicators"
+        visual: "blonde hair, superhero suit, Vindicator"
+      - name: "Supernova"
+        aliases: []
+        description: "Cosmic-powered Vindicator"
+        visual: "cosmic glowing skin, superhero suit, Vindicator"
+      - name: "Million Ants"
+        aliases: []
+        description: "Vindicator made of a colony of ants"
+        visual: "made of ants, humanoid shape, Vindicator"
+      - name: "Alan Rails"
+        aliases: []
+        description: "Ghost train-powered Vindicator"
+        visual: "ghost train whistle, green and black suit, Vindicator"
+      - name: "Crocubot"
+        aliases: []
+        description: "Half crocodile, half robot Vindicator"
+        visual: "crocodile head, robotic body, Vindicator"
+      - name: "Noob-Noob"
+        aliases: []
+        description: "Vindicators janitor, Rick's favorite"
+        visual: "small stature, Vindicators uniform, janitor"
+
+      # ── Alien Entities, Parasites & Oddities ──
+      - name: "Gearhead"
+        aliases: ["Revolio Clockberg Jr."]
+        description: "Gear-person, Rick's frenemy"
+        visual: "gear for a head, blue jumpsuit, gear-person"
+      - name: "Krombopulos Michael"
+        aliases: ["K. Michael"]
+        description: "Assassin who loves killing, bought weapons from Rick"
+        visual: "green skin, assassin gear, Gromflomite hitman"
+      - name: "Unity"
+        aliases: []
+        description: "Hivemind entity, Rick's ex-girlfriend"
+        visual: "blue skin, various clothes, hive mind"
+      - name: "Abrodolph Lincoler"
+        aliases: []
+        description: "Rick's failed genetic experiment"
+        visual: "top hat, lab coat, genetic experiment"
+      - name: "Scary Terry"
+        aliases: []
+        description: "Freddy Krueger parody in the dream dimension"
+        visual: "fedoras and claws, striped sweater, dream monster"
+      - name: "Shrimply Pibbles"
+        aliases: []
+        description: "Galaxy's most important civil rights leader"
+        visual: "heart-shaped head, hospital gown, civil rights leader"
+      - name: "King Flippy Nips"
+        aliases: []
+        description: "King of Pluto"
+        visual: "pink skin, royal attire, Plutonian king"
+      - name: "Sleepy Gary"
+        aliases: []
+        description: "Parasitic alien posing as Beth's husband"
+        visual: "nightcap, pajamas, parasitic husband"
+      - name: "Tinkles"
+        aliases: []
+        description: "Parasitic imaginary friend of Summer"
+        visual: "magical horn, white fur, parasitic lamb"
+      - name: "Jaguar"
+        aliases: []
+        description: "Freedom fighter rescued from pickle Rick's prison"
+        visual: "muscular with scars, tactical gear, freedom fighter"
+      - name: "Arthricia"
+        aliases: []
+        description: "Cat alien from the Purge planet"
+        visual: "purple cat-like fur, Amish dress, purger"
+      - name: "Glootie"
+        aliases: []
+        description: "Alien intern who made a dating app"
+        visual: "pink skin, alien intern badge, app developer"
+      - name: "Balthromaw"
+        aliases: []
+        description: "Dragon soul-bonded to Rick"
+        visual: "scales and wings, dragon hoard, soul-bonded dragon"
+      - name: "Planetina"
+        aliases: []
+        description: "Captain Planet parody, Morty's eco-warrior ex"
+        visual: "blue skin, superhero costume, elemental entity"
+      - name: "Mr. Nimbus"
+        aliases: ["Nimbus"]
+        description: "King of the Ocean, Rick's nemesis"
+        visual: "speedo, pelvic thrusts, King of the Ocean"
+      - name: "Water-T"
+        aliases: []
+        description: "Alien exile who becomes an ice cube"
+        visual: "water body, sunglasses, alien exile"
+      - name: "Garbage Goober"
+        aliases: []
+        description: "Trash-eating alien creature"
+        visual: "purple skin, trash-eating mouth, garbage eater"
+      - name: "Churry"
+        aliases: []
+        description: "Living churro creature"
+        visual: "churro body, smiling face, living food"
 
     # -- Locations (used for clip matching) ----------------------------------
     locations:
