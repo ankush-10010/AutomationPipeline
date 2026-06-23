@@ -17,9 +17,8 @@ import os
 import time
 from pathlib import Path
 
-# We use moviepy and Pillow (already in requirements.txt) to grab frames
 try:
-    from moviepy.editor import VideoFileClip
+    from moviepy import VideoFileClip
     from PIL import Image
 except ImportError:
     print("Error: moviepy or Pillow not found.")

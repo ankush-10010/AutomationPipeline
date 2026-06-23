@@ -254,7 +254,7 @@ def phase2_subtitle_index(
 def _extract_middle_frame(video_path: Path, temp_image_path: Path) -> bool:
     """Extract the middle frame of a video clip and save as JPEG."""
     try:
-        from moviepy.editor import VideoFileClip
+        from moviepy import VideoFileClip
         from PIL import Image
     except ImportError:
         log.error("moviepy or Pillow not found. Install with: pip install -r requirements.txt")
