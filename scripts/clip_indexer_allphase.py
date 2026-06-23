@@ -164,6 +164,29 @@ def _parse_season_episode(prefix: str) -> tuple:
     return 1, 1  # fallback defaults
 
 
+def _find_mentioned_characters(text: str, characters_config: list) -> list:
+    """Find character names/aliases mentioned in the dialogue text."""
+    if not text or not characters_config:
+        return []
+    
+    text_lower = text.lower()
+    found = set()
+    
+    for char in characters_config:
+        # Check the primary name and all aliases
+        names_to_check = [char.get("name", "")] + char.get("aliases", [])
+        for name in names_to_check:
+            if not name:
+                continue
+            # Use regex word boundaries so "brick" doesn't match "rick"
+            pattern = r'\b' + re.escape(name.lower()) + r'\b'
+            if re.search(pattern, text_lower):
+                found.add(char["name"])
+                break  # Found this character, no need to check other aliases
+                
+    return list(found)
+
+
 def phase2_subtitle_index(
     manifest_path: Path,
     srt_path: Path,
@@ -171,6 +194,7 @@ def phase2_subtitle_index(
     prefix: str,
     index_path: Path,
     clips_dir: Path,
+    characters_config: list,
 ) -> dict:
     """Cross-reference clip timecodes with subtitle timecodes to tag each clip.
 
@@ -219,6 +243,9 @@ def phase2_subtitle_index(
 
         combined_text = " ".join(overlapping_text) if overlapping_text else ""
         tags = _generate_keywords(combined_text) if combined_text else []
+        
+        # Auto-tag characters if they are mentioned in the dialogue
+        mentioned_chars = _find_mentioned_characters(combined_text, characters_config)
 
         # Build the filepath relative to clips_dir
         clip_filepath = str(clips_dir / clip_name)
@@ -229,7 +256,7 @@ def phase2_subtitle_index(
             "show": show_slug,
             "season": season,
             "episode": episode,
-            "characters": [],
+            "characters": mentioned_chars,
             "location": "",
             "action": combined_text,
             "mood": "",
@@ -493,12 +520,7 @@ Examples:
             sys.exit(1)
         log.info("Skipping Phase 1 — using existing manifest: %s", manifest_path)
 
-    # ── Phase 2: Subtitle Indexing ────────────────────────────────────────
-    index_data = phase2_subtitle_index(
-        manifest_path, srt_path, args.show, args.prefix, index_path, clips_dir,
-    )
-
-    # ── Load character data from show_config.yaml for vision tagging ─────
+    # ── Load character data from show_config.yaml for keyword matching ───
     characters = []
     try:
         import yaml
@@ -509,9 +531,14 @@ Examples:
             show_data = show_cfg.get("shows", {}).get(args.show, {})
             characters = show_data.get("characters", [])
             if characters:
-                log.info("Loaded %d characters from show_config.yaml for vision tagging.", len(characters))
+                log.info("Loaded %d characters from show_config.yaml for subtitle matching.", len(characters))
     except Exception as e:
         log.warning("Could not load show_config.yaml for character hints: %s", e)
+
+    # ── Phase 2: Subtitle Indexing ────────────────────────────────────────
+    index_data = phase2_subtitle_index(
+        manifest_path, srt_path, args.show, args.prefix, index_path, clips_dir, characters
+    )
 
     # ── Phase 3: Vision Indexing ──────────────────────────────────────────
     if args.skip_vision:
