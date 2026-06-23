@@ -288,12 +288,12 @@ def _extract_middle_frame(video_path: Path, temp_image_path: Path) -> bool:
         return False
 
     try:
-        clip = VideoFileClip(str(video_path))
-        mid_time = clip.duration / 2.0
-        frame_data = clip.get_frame(mid_time)
-        img = Image.fromarray(frame_data)
-        img.save(str(temp_image_path), "JPEG")
-        clip.close()
+        # clip = VideoFileClip(str(video_path))
+        # mid_time = clip.duration / 2.0
+        # frame_data = clip.get_frame(mid_time)
+        # img = Image.fromarray(frame_data)
+        # img.save(str(temp_image_path), "JPEG")
+        # clip.close()
         return True
     except Exception as e:
         log.warning("Failed to extract frame from %s: %s", video_path.name, e)
@@ -345,25 +345,25 @@ def _analyze_frame_with_ollama(
     }
 
     try:
-        resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=120)
-        resp.raise_for_status()
-        result_text = resp.json().get("response", "").strip()
+        # resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=120)
+        # resp.raise_for_status()
+        # result_text = resp.json().get("response", "").strip()
 
         metadata = {"characters": [], "location": "", "action": ""}
-        for line in result_text.split("\n"):
-            line = line.strip()
-            if line.lower().startswith("characters:"):
-                chars_str = line.split(":", 1)[1].strip()
-                if chars_str.lower() not in ("none", "unknown", "n/a", ""):
-                    metadata["characters"] = [c.strip() for c in chars_str.split(",")]
-            elif line.lower().startswith("location:"):
-                loc_str = line.split(":", 1)[1].strip()
-                if loc_str.lower() not in ("none", "unknown", "n/a", ""):
-                    metadata["location"] = loc_str
-            elif line.lower().startswith("action:"):
-                act_str = line.split(":", 1)[1].strip()
-                if act_str.lower() not in ("none", "unknown", "n/a", ""):
-                    metadata["action"] = act_str
+        # for line in result_text.split("\n"):
+        #     line = line.strip()
+        #     if line.lower().startswith("characters:"):
+        #         chars_str = line.split(":", 1)[1].strip()
+        #         if chars_str.lower() not in ("none", "unknown", "n/a", ""):
+        #             metadata["characters"] = [c.strip() for c in chars_str.split(",")]
+        #     elif line.lower().startswith("location:"):
+        #         loc_str = line.split(":", 1)[1].strip()
+        #         if loc_str.lower() not in ("none", "unknown", "n/a", ""):
+        #             metadata["location"] = loc_str
+        #     elif line.lower().startswith("action:"):
+        #         act_str = line.split(":", 1)[1].strip()
+        #         if act_str.lower() not in ("none", "unknown", "n/a", ""):
+        #             metadata["action"] = act_str
         return metadata
     except Exception as e:
         log.error("Ollama vision request failed: %s", e)
