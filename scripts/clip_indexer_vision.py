@@ -52,11 +52,12 @@ def analyze_image_with_ollama(image_path: str, show_name: str, model: str) -> di
         img_b64 = base64.b64encode(f.read()).decode("utf-8")
         
     prompt = f"""You are an expert on the TV show '{show_name}'. 
-Look at this single frame from an episode.
-Identify the characters, the location, and what is happening visually.
+Analyze this single frame from an episode.
+Identify ONLY the characters that are clearly visible in this specific frame. Do NOT list characters that are not in the image. If no characters are visible, write 'None'.
+Identify the location, and what is happening visually.
 
 You MUST reply in exactly this format with no other text:
-Characters: [comma separated names, or None]
+Characters: [comma separated names of VISIBLE characters ONLY, or None]
 Location: [brief location name, or Unknown]
 Action: [1 short sentence describing the visual action]"""
 

@@ -274,16 +274,11 @@ def _extract_middle_frame(video_path: Path, temp_image_path: Path) -> bool:
 
 
 def _build_character_reference(characters: list) -> str:
-    """Build a visual character reference sheet from show_config characters."""
+    """Build a comma-separated list of character names."""
     if not characters:
         return ""
-    lines = []
-    for c in characters:
-        name = c.get("name", "")
-        visual = c.get("visual", "")
-        if name and visual:
-            lines.append(f"- {name}: {visual}")
-    return "\n".join(lines)
+    names = [c.get("name") for c in characters if c.get("name")]
+    return ", ".join(names)
 
 
 def _analyze_frame_with_ollama(
@@ -299,19 +294,17 @@ def _analyze_frame_with_ollama(
     char_ref = _build_character_reference(characters or [])
     char_section = ""
     if char_ref:
-        char_section = (
-            "\n\nHere is a visual reference guide for the characters in this show. "
-            "Use ONLY these names when identifying characters:\n"
-            f"{char_ref}\n"
-        )
+        char_section = f"\nKnown characters in this show: {char_ref}\n"
 
     prompt = (
         f"You are an expert on the TV show '{show_name}'. "
-        "Look at this single frame from an episode.\n"
+        "Analyze this single frame from an episode.\n"
         f"{char_section}\n"
-        "Identify the characters, the location, and what is happening visually.\n\n"
+        "Identify ONLY the characters that are clearly visible in this specific frame. "
+        "Do NOT list all characters from the show. If no characters are visible, write 'None'.\n"
+        "Identify the location, and what is happening visually.\n\n"
         "You MUST reply in exactly this format with no other text:\n"
-        "Characters: [comma separated names, or None]\n"
+        "Characters: [comma separated names of VISIBLE characters ONLY, or None]\n"
         "Location: [brief location name, or Unknown]\n"
         "Action: [1 short sentence describing the visual action]"
     )
