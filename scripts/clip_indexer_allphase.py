@@ -364,60 +364,61 @@ def phase3_vision_index(
         log.error("Index file not found: %s — run phases 1 & 2 first.", index_path)
         sys.exit(1)
 
-    with open(index_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    # with open(index_path, "r", encoding="utf-8") as f:
+    #     data = json.load(f)
 
-    clips = data.get("clips", [])
-    if not clips:
-        log.warning("No clips in index. Nothing to do.")
-        return
+    # clips = data.get("clips", [])
+    # if not clips:
+    #     log.warning("No clips in index. Nothing to do.")
+    #     return
 
-    temp_img = Path("temp_vision_frame.jpg")
-    updated_count = 0
+    # temp_img = Path("temp_vision_frame.jpg")
+    # updated_count = 0
 
-    for i, clip in enumerate(clips):
-        # Skip if already visually tagged (has characters), unless --force
-        if clip.get("characters") and not force:
-            continue
+    # for i, clip in enumerate(clips):
+    #     # Skip if already visually tagged (has characters), unless --force
+    #     if clip.get("characters") and not force:
+    #         continue
 
-        video_path = clips_dir / clip["filename"]
-        if not video_path.exists():
-            log.warning("Skipping %s (file not found at %s)", clip["filename"], video_path)
-            continue
+    #     video_path = clips_dir / clip["filename"]
+    #     if not video_path.exists():
+    #         log.warning("Skipping %s (file not found at %s)", clip["filename"], video_path)
+    #         continue
 
-        log.info("[%d/%d] Analyzing %s...", i + 1, len(clips), clip["filename"])
+    #     log.info("[%d/%d] Analyzing %s...", i + 1, len(clips), clip["filename"])
 
-        if not _extract_middle_frame(video_path, temp_img):
-            continue
+    #     if not _extract_middle_frame(video_path, temp_img):
+    #         continue
 
-        metadata = _analyze_frame_with_ollama(temp_img, show_name, vision_model, characters)
-        if not metadata:
-            continue
+    #     metadata = _analyze_frame_with_ollama(temp_img, show_name, vision_model, characters)
+    #     if not metadata:
+    #         continue
 
-        # Merge vision results into the clip entry
-        clip["characters"] = metadata["characters"]
-        if metadata["location"]:
-            clip["location"] = metadata["location"]
-        if metadata["action"]:
-            clean_action = re.sub(r"[^a-zA-Z0-9\s]", "", metadata["action"].lower())
-            visual_tags = [w for w in clean_action.split() if len(w) > 3]
-            existing_tags = clip.get("tags", [])
-            clip["tags"] = list(set(existing_tags + visual_tags))
+    #     # Merge vision results into the clip entry
+    #     clip["characters"] = metadata["characters"]
+    #     if metadata["location"]:
+    #         clip["location"] = metadata["location"]
+    #     if metadata["action"]:
+    #         clean_action = re.sub(r"[^a-zA-Z0-9\s]", "", metadata["action"].lower())
+    #         visual_tags = [w for w in clean_action.split() if len(w) > 3]
+    #         existing_tags = clip.get("tags", [])
+    #         clip["tags"] = list(set(existing_tags + visual_tags))
 
-        log.info("   👁️  Characters: %s | Location: %s",
-                 ", ".join(metadata["characters"]) or "None",
-                 metadata["location"] or "Unknown")
-        updated_count += 1
+    #     log.info("   👁️  Characters: %s | Location: %s",
+    #              ", ".join(metadata["characters"]) or "None",
+    #              metadata["location"] or "Unknown")
+    #     updated_count += 1
 
-        # Save incrementally after each clip so we don't lose progress on crash
-        with open(index_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+    #     # Save incrementally after each clip so we don't lose progress on crash
+    #     with open(index_path, "w", encoding="utf-8") as f:
+    #         json.dump(data, f, indent=2)
 
-    # Cleanup temp frame
-    if temp_img.exists():
-        temp_img.unlink()
+    # # Cleanup temp frame
+    # if temp_img.exists():
+    #     temp_img.unlink()
 
-    log.info("✓ Phase 3 complete — %d clips visually tagged.", updated_count)
+    # log.info("✓ Phase 3 complete — %d clips visually tagged.", updated_count)
+    print("bypassed the level 3 for now")
 
 
 # ---------------------------------------------------------------------------
