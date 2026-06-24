@@ -65,7 +65,7 @@ def _check_nvenc_support() -> bool:
     try:
         cmd = [
             FFMPEG, "-v", "error", 
-            "-f", "lavfi", "-i", "color=c=black:s=16x16:d=0.1", 
+            "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1", 
             "-c:v", "h264_nvenc", "-f", "null", "-"
         ]
         result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
