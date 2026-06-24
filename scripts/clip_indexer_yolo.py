@@ -103,29 +103,41 @@ def main():
         return
 
     # ── 2. Process Clips and Save Incrementally ──
-    for i, clip in enumerate(clips_to_process, 1):
-        video_path = Path(clip["filepath"])
-        if not video_path.exists():
-            print(f"[{i}/{len(clips_to_process)}] SKIPPING (File not found): {video_path}")
-            continue
-
-        print(f"[{i}/{len(clips_to_process)}] Analyzing {clip['filename']}... ", end="", flush=True)
-        
-        detected_chars = classify_clip(model, video_path)
-        
-        # OVERWRITE the old garbage characters with the true YOLO ones
-        clip["characters"] = detected_chars
-        
-        # Add a flag so we know we don't need to do this clip again!
-        clip["yolo_tagged"] = True  
-        
-        print(f"Result: {detected_chars}")
-        
-        # SAVE INCREMENTALLY! If the script crashes, you lose zero progress.
-        with open(index_path, 'w', encoding='utf-8') as f:
+    def safe_save():
+        """Write to a temp file first, then replace the real file to prevent corruption."""
+        temp_path = index_path.with_suffix('.tmp')
+        with open(temp_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
+        temp_path.replace(index_path)
 
-    print("\n✅ Batch YOLO tagging complete!")
+    try:
+        for i, clip in enumerate(clips_to_process, 1):
+            video_path = Path(clip["filepath"])
+            if not video_path.exists():
+                print(f"[{i}/{len(clips_to_process)}] SKIPPING (File not found): {video_path}")
+                continue
+
+            print(f"[{i}/{len(clips_to_process)}] Analyzing {clip['filename']}... ", end="", flush=True)
+            
+            detected_chars = classify_clip(model, video_path)
+            
+            # OVERWRITE the old garbage characters with the true YOLO ones
+            clip["characters"] = detected_chars
+            clip["yolo_tagged"] = True  
+            
+            print(f"Result: {detected_chars}")
+            
+            # Save every 50 clips to prevent huge disk I/O bottlenecks
+            if i % 50 == 0:
+                safe_save()
+
+    except KeyboardInterrupt:
+        print("\n\n⚠️ Script interrupted by user! Saving progress before exiting...")
+    finally:
+        # Guarantee a save when the script finishes or is killed
+        safe_save()
+
+    print("\n✅ Batch YOLO tagging complete (progress safely saved).")
 
 if __name__ == "__main__":
     main()

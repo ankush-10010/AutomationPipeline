@@ -1,0 +1,11 @@
+further_progress.md
+implementation.md
+implementation_old.md
+requirements.txt
+clips\rick_and_morty\episode_summaries.txt
+prompts\script_prompt.txt
+prompts\thumbnail_prompt.txt
+prompts\topic_prompt.txt
+topics\approved\why_rick_hates_time_travel.txt
+topics\approved\why_rick_hates_time_travel_clean.txt
+rick.jpeg
