@@ -80,6 +80,11 @@ def split_episode(video_path: str, output_dir: str, prefix: str, threshold: floa
     log.info(f"✅ Saved timecode manifest to {manifest_path}")
 
 if __name__ == "__main__":
+    import torch
+    device_name = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
+    color = "\033[92m" if torch.cuda.is_available() else "\033[93m"
+    print(f"\n{color}🚀 Scene Splitter is running on: {device_name}\033[0m\n")
+
     parser = argparse.ArgumentParser(description="Split long videos into scenes.")
     parser.add_argument("video", help="Path to the long video file (e.g. episode.mp4)")
     parser.add_argument("--output", default="clips", help="Directory to save the clips (default: clips)")

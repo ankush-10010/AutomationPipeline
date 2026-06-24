@@ -28,6 +28,11 @@ def main():
         print("No clips found in index.")
         return
 
+    import torch
+    device_name = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
+    color = "\033[92m" if torch.cuda.is_available() else "\033[93m"
+    print(f"\n{color}🚀 SentenceTransformers is running on: {device_name}\033[0m\n")
+
     print("Loading SentenceTransformer model (this will download ~80MB the very first time)...")
     # all-MiniLM-L6-v2 is incredibly fast on CPU and highly accurate for sentence matching
     model = SentenceTransformer('all-MiniLM-L6-v2')
