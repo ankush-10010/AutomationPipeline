@@ -11,11 +11,23 @@ MIN_MAX_CONF_FOR_RATIO = 0.20
 FRAME_PRESENCE_THRESHOLD = 0.10
 
 
+import torch
+
 def classify_clip(model, video_path):
-    """Run classification on every frame and aggregate results."""
+    """Run classification on frames and aggregate results."""
     try:
-        # stream=True ensures we don't run out of RAM on large clips
-        results = model.predict(source=str(video_path), stream=True, verbose=False)
+        # Determine device
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # stream=True ensures we don't run out of RAM
+        # vid_stride=10 means we only analyze 3 frames per second instead of 30!
+        results = model.predict(
+            source=str(video_path), 
+            stream=True, 
+            verbose=False,
+            vid_stride=10,
+            device=device
+        )
     except Exception as e:
         print(f"  [Error reading video: {e}]", end="")
         return []
