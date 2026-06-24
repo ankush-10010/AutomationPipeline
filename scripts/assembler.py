@@ -60,6 +60,33 @@ def _find_ffprobe() -> str:
 FFMPEG = _find_ffmpeg()
 FFPROBE = _find_ffprobe()
 
+def _check_nvenc_support() -> bool:
+    """Check if the system hardware supports NVIDIA NVENC encoding."""
+    try:
+        cmd = [
+            FFMPEG, "-v", "error", 
+            "-f", "lavfi", "-i", "color=c=black:s=16x16:d=0.1", 
+            "-c:v", "h264_nvenc", "-f", "null", "-"
+        ]
+        result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if result.returncode == 0:
+            log.info("NVIDIA GPU detected. Hardware acceleration (NVENC) enabled.")
+            return True
+        return False
+    except Exception:
+        return False
+
+HAS_NVENC = _check_nvenc_support()
+
+def get_video_encoder_args() -> list:
+    """Return the optimal FFmpeg arguments based on hardware availability."""
+    if HAS_NVENC:
+        # p6 = high quality, cq=16 = constant quality visually lossless
+        return ["-c:v", "h264_nvenc", "-preset", "p6", "-cq", "16"]
+    else:
+        # Fallback to CPU
+        return ["-c:v", "libx264", "-preset", "slow", "-crf", "16"]
+
 
 def run_ffmpeg(args: list, desc: str = "ffmpeg"):
     """Run an ffmpeg command, raising on failure."""
@@ -124,9 +151,7 @@ def prepare_clip_segment(clip_path: str, duration: float, clip_start: float,
         "-t", str(duration),
         "-vf", vf,
         "-an",  # Strip audio from clip
-        "-c:v", "libx264",
-        "-preset", "slow",
-        "-crf", "16",
+        *get_video_encoder_args(),
         "-pix_fmt", "yuv420p",
         str(output_path),
     ]
@@ -173,9 +198,7 @@ def prepare_image_segment(image_path: str, duration: float,
         "-i", str(image_path),
         "-t", str(duration),
         "-vf", vf,
-        "-c:v", "libx264",
-        "-preset", "slow",
-        "-crf", "16",
+        *get_video_encoder_args(),
         "-pix_fmt", "yuv420p",
         str(output_path),
     ]
@@ -189,9 +212,7 @@ def prepare_black_segment(duration: float, width: int, height: int,
         "-y",
         "-f", "lavfi",
         "-i", f"color=c=black:s={width}x{height}:d={duration}:r={fps}",
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
+        *get_video_encoder_args(),
         "-pix_fmt", "yuv420p",
         str(output_path),
     ]
@@ -533,9 +554,7 @@ def assemble_video(manifest: dict, audio_path: str, output_path: str,
                 "-y",
                 "-i", concat_video,
                 "-vf", caption_filter,
-                "-c:v", codec,
-                "-preset", "slow",
-                "-crf", "16",
+                *get_video_encoder_args(),
                 "-pix_fmt", pix_fmt,
                 "-an",
                 captioned_video,
