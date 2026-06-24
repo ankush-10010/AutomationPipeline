@@ -16,6 +16,7 @@ import re
 import sys
 from pathlib import Path
 
+import numpy as np
 import requests
 
 # -- Local imports -----------------------------------------------------------
@@ -166,6 +167,62 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
 
 
 # ============================================================================
+# Clip scoring — Semantic strategy (Vector Embeddings)
+# ============================================================================
+
+def cosine_similarity(v1, v2):
+    dot_product = np.dot(v1, v2)
+    norm1 = np.linalg.norm(v1)
+    norm2 = np.linalg.norm(v2)
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    return dot_product / (norm1 * norm2)
+
+
+def match_semantic(segment_text: str, clips: list, show_config: dict, embedding_model, threshold: float = 3.0) -> tuple:
+    """Find the best clip using Vector Embeddings (Semantic Search)."""
+    best_clip = None
+    best_score = -1.0
+
+    seg_characters = extract_character_mentions(segment_text, show_config)
+    
+    # Convert incoming script text to mathematical vector
+    segment_embedding = embedding_model.encode(segment_text).tolist()
+
+    for clip in clips:
+        clip_emb = clip.get("embedding")
+        if not clip_emb:
+            continue  # Skip clips that haven't been embedded yet
+
+        # 1. Base Score: Cosine Similarity (Meaning match) -> yields 0 to 1
+        sim = cosine_similarity(segment_embedding, clip_emb)
+        
+        # Scale to 0-10 so it fits the same scale as old keyword matching
+        score = sim * 10.0
+
+        # 2. Hard constraint / Bonus: Character Matching
+        clip_characters = {c.lower() for c in clip.get("characters", [])}
+        char_overlap = seg_characters & clip_characters
+        
+        # Give a massive boost (5 points per character) if the requested characters actually exist
+        score += len(char_overlap) * 5.0
+        
+        # Location match bonus
+        seg_locations = extract_location_mentions(segment_text, show_config)
+        clip_location = clip.get("location", "").lower()
+        if clip_location and clip_location in seg_locations:
+            score += 2.0
+
+        if score > best_score:
+            best_score = score
+            best_clip = clip
+
+    if best_score >= threshold:
+        return best_clip, best_score
+    return None, 0.0
+
+
+# ============================================================================
 # Clip scoring — LLM strategy (Ollama)
 # ============================================================================
 
@@ -283,7 +340,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
     show_config : dict
         The active show's config section.
     strategy : str
-        "keyword" or "llm".
+        "keyword", "semantic", or "llm".
     matching_config : dict
         clip_matching section from pipeline_config.yaml.
     llm_config : dict
@@ -314,6 +371,22 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
         score = 0.0
 
         # --- Matching ---
+        if strategy == "semantic" and clips:
+            # We lazy load the model here only if strategy is semantic
+            if not hasattr(build_manifest, "embedding_model"):
+                try:
+                    from sentence_transformers import SentenceTransformer
+                    log.info("Loading SentenceTransformer model for semantic matching...")
+                    build_manifest.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+                except ImportError:
+                    log.error("sentence-transformers not installed! Falling back to keyword matching.")
+                    strategy = "keyword"
+            
+            if strategy == "semantic":
+                best_clip, score = match_semantic(
+                    seg_text, clips, show_config, build_manifest.embedding_model, threshold=3.0
+                )
+
         if strategy == "llm" and clips:
             best_clip, score = match_llm(seg_text, clips, llm_config)
             # Fall back to keyword if LLM fails
@@ -321,7 +394,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                 best_clip, score = match_keyword(
                     seg_text, clips, show_config, threshold
                 )
-        elif clips:
+        elif strategy == "keyword" and clips:
             best_clip, score = match_keyword(
                 seg_text, clips, show_config, threshold
             )
@@ -431,7 +504,7 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--strategy",
-        choices=["keyword", "llm"],
+        choices=["keyword", "llm", "semantic"],
         default=None,
         help="Matching strategy (default: from pipeline config).",
     )
@@ -461,7 +534,7 @@ def main(argv=None):
     log.info("Using show: %s (%s)", show_config.get("display_name", "?"), show_slug)
 
     # Strategy
-    strategy = args.strategy or matching_cfg.get("strategy", "keyword")
+    strategy = args.strategy or matching_cfg.get("strategy", "semantic")
     log.info("Matching strategy: %s", strategy)
 
     # Load clip index
