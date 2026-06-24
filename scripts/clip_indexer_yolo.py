@@ -20,12 +20,10 @@ def classify_clip(model, video_path):
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # stream=True ensures we don't run out of RAM
-        # vid_stride=10 means we only analyze 3 frames per second instead of 30!
         results = model.predict(
             source=str(video_path), 
             stream=True, 
             verbose=False,
-            vid_stride=10,
             device=device
         )
     except Exception as e:
