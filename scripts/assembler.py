@@ -70,13 +70,16 @@ def _check_nvenc_support() -> bool:
         ]
         result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if result.returncode == 0:
-            log.info("NVIDIA GPU detected. Hardware acceleration (NVENC) enabled.")
+            log.info("\033[92m🚀 NVIDIA GPU detected! FFmpeg Hardware Acceleration (NVENC) ENABLED.\033[0m")
             return True
         return False
     except Exception:
         return False
 
 HAS_NVENC = _check_nvenc_support()
+
+if not HAS_NVENC:
+    log.info("\033[93m⚠️ No NVIDIA GPU detected. FFmpeg falling back to CPU (libx264).\033[0m")
 
 def get_video_encoder_args() -> list:
     """Return the optimal FFmpeg arguments based on hardware availability."""

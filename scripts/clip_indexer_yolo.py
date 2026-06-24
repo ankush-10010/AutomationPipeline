@@ -82,6 +82,11 @@ def main():
         print("No clips found in index.")
         return
 
+    import torch
+    device_name = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
+    color = "\033[92m" if torch.cuda.is_available() else "\033[93m"
+    print(f"\n{color}🚀 YOLO Model is running on: {device_name}\033[0m\n")
+
     print(f"Loading YOLO model from {args.weights}...")
     model = YOLO(args.weights)
 
