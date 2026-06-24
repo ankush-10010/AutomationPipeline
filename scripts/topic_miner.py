@@ -269,6 +269,13 @@ def append_to_queue(new_topics: list, pipeline_config: dict) -> int:
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    import torch
+    if torch.cuda.is_available():
+        log.info("\033[92m🚀 Topic Miner is fully utilizing the GPU (CUDA)!\033[0m")
+        log.info(f"\033[92mDevice Name: {torch.cuda.get_device_name(0)}\033[0m")
+    else:
+        log.info("\033[93m⚠️ Topic Miner is running on the CPU! No GPU detected.\033[0m")
+
     parser = argparse.ArgumentParser(
         description="Phase 1a — Mine video topics using Ollama LLM",
     )
