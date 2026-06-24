@@ -1132,6 +1132,13 @@ Phases (in order):
 
 
 def main():
+    import torch
+    if torch.cuda.is_available():
+        log.info("\033[92m🚀 Orchestrator is fully utilizing the GPU (CUDA)!\033[0m")
+        log.info(f"\033[92mDevice Name: {torch.cuda.get_device_name(0)}\033[0m")
+    else:
+        log.info("\033[93m⚠️ Orchestrator is running on the CPU! No GPU detected.\033[0m")
+
     parser = build_parser()
     args = parser.parse_args()
 
