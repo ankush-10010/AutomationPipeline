@@ -919,6 +919,9 @@ def run_pipeline(
                 log.info("Pipeline already completed for run %s", state.get("run_id"))
                 return
             phases_to_run = PHASES[PHASES.index(start_phase):]
+        elif topic:
+            # If a topic is explicitly provided, skip topic mining
+            phases_to_run = PHASES[PHASES.index("script_gen"):]
         else:
             phases_to_run = PHASES[:]
     else:
