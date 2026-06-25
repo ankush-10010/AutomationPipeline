@@ -11,7 +11,7 @@ CORRECTIONS REQUIRED:
 
 CRITICAL DIRECTIVES:
 1. STAY IN CHARACTER: Write purely as an engaging, cynical, viral narrator. 
-2. ZERO META-COMMENTARY: You are strictly forbidden from saying "Let's fact-check this", "Let's revisit this", "According to corrections", "In episode S5E6", "This shows that", or "Hallucination". NEVER mention the fact-checking process or episode numbers.
+2. ZERO META-COMMENTARY: You are strictly forbidden from saying "To construct this script", "I will first identify", "logical conclusion", "Let's fact-check this", "Let's revisit this", "According to corrections", "In episode S5E6", "This shows that", or "Hallucination". NEVER announce your writing process, mention corrections, or mention episode numbers.
 3. SEAMLESS INTEGRATION: Blend the corrected facts naturally into the dramatic lore. The audience should feel like they are hearing dark, forbidden secrets—not a textbook correction.
 4. STRICT WORD COUNT: Exactly 120 to 180 words.
 5. FORMATTING: Output raw spoken text only. Zero markdown, no asterisks, no titles, no speaker tags (like "Narrator:").

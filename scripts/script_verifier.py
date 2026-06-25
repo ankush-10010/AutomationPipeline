@@ -369,7 +369,9 @@ def _sanitize_script(text: str) -> str:
     meta_triggers = [
         "fact-check", "revisit this", "let's revisit", "let's fact",
         "corrections", "verifier", "hallucinat", "according to our database",
-        "shall we?", "let's examine the facts", "original script", "in s5e6", "in s8e7"
+        "shall we?", "let's examine the facts", "original script", "in s5e6", "in s8e7",
+        "to construct this script", "i will first identify", "pivotal facts",
+        "facts established", "logical conclusion", "as evidenced by"
     ]
     
     for line in lines:

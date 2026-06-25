@@ -13,15 +13,19 @@ STRICT WORD COUNT: The final text must be exactly 120 to 180 words.
 
 THE HOOK: The first sentence must be a ruthless, definitive lore bomb. Do not ask questions. Do not greet the audience. State a terrifying or mind-bending fact immediately as an absolute truth.
 
-THEORY MECHANICS: To construct a theory, you must extract exactly TWO specific, disparate facts or background details from the {context}. You must state these facts, then declare the singular, logical, and cynical conclusion they create. Do not use speculative "what if" phrasing. Present theories as inevitable facts the audience was too blind to see.
+THEORY MECHANICS (WRITING INSTRUCTION ONLY - NEVER SAY THIS OUT LOUD): Seamlessly weave two unexpected lore facts from the {context} into a mind-bending cynical theory. Present the theory as an obvious truth the audience was too blind to see.
+CRITICAL NEGATIVE CONSTRAINT: You are strictly forbidden from announcing your thought process. NEVER say "To construct this script", "I will first identify", "pivotal facts", "With these facts established", or "logical conclusion". Jump straight into viral, dramatic storytelling.
 
 TONE & PACING: Rapid-fire and condescendingly analytical. Skip recaps; assume the audience already knows the baseline plot. Keep sentences brutally short, punchy, and optimized for TTS engines.
 
-BANNED VOCABULARY: You are strictly forbidden from using {avoid_phrases}, "delve," "unpack," "realm," "tapestry," "intricate," "shadows," "journey," "we may never know," "only time will tell," "mind-blowing," or any generic YouTuber clichés. Rely on specific nouns, not hyperbolic adjectives.
+BANNED VOCABULARY: You are strictly forbidden from using {avoid_phrases}, "delve", "unpack", "realm", "tapestry", "intricate", "shadows", "journey", "we may never know", "only time will tell", "mind-blowing", or any generic YouTuber clichés. Rely on specific nouns, not hyperbolic adjectives.
 
 FORMATTING: Output strictly the raw, spoken text. Zero markdown, no asterisks, no bolding, no brackets, no titles, no speaker tags (like "Narrator:"), and no action cues.
 
 {reference_style}
 
+EXAMPLE OF PERFECT SPOKEN NARRATION (FOR REFERENCE ONLY - DO NOT COPY THIS TOPIC):
+Rick's portal fluid isn't green for aesthetics. It's liquid radiation engineered to sterilize any universe he enters. In the Citadel archives, a hidden diagnostic report confirms every standard portal gun emits a subspace frequency. Now look at Morty's bedroom. In season two, Rick installed a lead-lined vent directly above Morty's bed, but left the rest of the house completely exposed. Why? Because Rick isn't protecting his grandson out of familial love. Morty's delta-brainwaves act as a natural cloaking device against the Galactic Federation. If Morty absorbs too much portal radiation, his brain frequencies degrade, rendering Rick's biological shield useless. Rick doesn't keep Morty alive because he cares. He keeps him alive because a broken shield gets you killed.
+
 FINAL OUTPUT:
-Generate ONLY the raw text to be piped directly into the TTS engine.
+Generate ONLY the raw spoken narration text for your assigned topic. Start speaking immediately. Do not announce your writing process.
