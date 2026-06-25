@@ -379,6 +379,23 @@ class EpisodeIndexer:
         if not isinstance(existing, dict):
             existing = {}
 
+        # Optimization: Only process episodes that exist in our clip index
+        clip_index_path = get_project_path("clip_index", self.pipeline_config)
+        clip_data = load_json(clip_index_path)
+        clips = clip_data.get("clips", []) if isinstance(clip_data, dict) else (clip_data or [])
+        
+        target_episode_keys = set()
+        for clip in clips:
+            filename = clip.get("filename", "")
+            ep_id = self._parse_episode_id(filename)
+            if ep_id:
+                target_episode_keys.add(f"s{ep_id[0]}e{ep_id[1]}")
+                
+        if target_episode_keys:
+            log.info("Optimization: Only processing %d episodes found in clips: %s", len(target_episode_keys), sorted(target_episode_keys))
+        else:
+            log.info("Optimization: No episodes found in clips, will process ALL subtitles")
+
         # Find all .srt files
         if not self.subtitles_dir.exists():
             log.error("Subtitles directory not found: %s", self.subtitles_dir)
@@ -391,10 +408,17 @@ class EpisodeIndexer:
         skipped = 0
 
         for srt_path in srt_files:
-            # Check if already indexed
+            # Check if already indexed or if we should skip based on clip index
             ep_id = self._parse_episode_id(srt_path.name)
             if ep_id is not None:
                 key = f"s{ep_id[0]}e{ep_id[1]}"
+                
+                # Skip if not in our target episodes (and we have target episodes)
+                if target_episode_keys and key not in target_episode_keys:
+                    log.debug("Skipping %s — no clips found for this episode", key)
+                    skipped += 1
+                    continue
+                    
                 if key in existing and not force:
                     log.debug("Skipping %s — already indexed (use --force to reprocess)", key)
                     skipped += 1
