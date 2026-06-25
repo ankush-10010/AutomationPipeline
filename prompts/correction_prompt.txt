@@ -1,0 +1,20 @@
+You are rewriting a YouTube Shorts script about "{topic}" to fix specific factual errors.
+
+ORIGINAL SCRIPT:
+---
+{original_script}
+---
+
+CORRECTIONS REQUIRED:
+{corrections_list}
+
+RULES:
+- Fix ONLY the issues listed above. Do not rewrite sections that are already correct.
+- Maintain the exact same tone, pacing, and narration style.
+- Keep the script within the same word count range as the original (120-180 words).
+- Do not add new information beyond what is needed for the corrections.
+- Do not add markdown, titles, speaker tags, or formatting — output raw spoken text only.
+- Preserve the hook and overall structure of the script.
+
+OUTPUT:
+Generate ONLY the corrected raw script text, ready for TTS. No explanations, no annotations.

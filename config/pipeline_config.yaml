@@ -20,6 +20,8 @@ paths:
   vector_db_dir: "./vector_db"
   theories_db: "./topics/theories.json"
   wiki_db: "./topics/wiki.json"
+  episode_index: "./episode_index.json"
+  research_cache_dir: "./research_cache"
 
 # -- LLM (Ollama) -----------------------------------------------------------
 llm:
@@ -126,3 +128,28 @@ clip_matching:
   fallback: "ai_image"                       # "ai_image", "generic_broll", or "black"
   max_clip_duration_seconds: 5               # Don't use clips longer than this per segment
   min_clip_duration_seconds: 1.5             # Minimum clip length
+
+# -- Web Research (for script verification) ---------------------------------
+web_research:
+  enabled: true
+  engine: "duckduckgo"                         # "duckduckgo", "brave", "serper"
+  max_results_per_query: 5
+  max_queries_per_topic: 3
+  api_key: null                                # Required for brave/serper only
+  cache_results: true
+  cache_dir: "./research_cache"
+  cache_ttl_days: 7                            # Re-research topics older than this
+
+# -- Script Verification ----------------------------------------------------
+verification:
+  enabled: true
+  max_retries: 2                               # Max correction loops per script
+  min_score: 7                                 # Regenerate from scratch if below this
+  verifier_model: null                         # null = same as llm.model
+  save_dossier: true                           # Save research dossier alongside scripts
+  save_verification_log: true                  # Save verifier output for debugging
+
+# -- Episode Index -----------------------------------------------------------
+episode_index:
+  path: "./episode_index.json"
+  auto_enrich_clips: true                      # Add episode data to clip_index on first run

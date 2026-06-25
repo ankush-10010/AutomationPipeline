@@ -208,11 +208,36 @@ def run_script_gen(
         log.info("[DRY RUN] Would generate script for: %s", topic)
         return None
 
-    from script_generator import generate_script_for_topic
+    from script_verifier import generate_verified_script, ScriptVerifier
 
-    script_path = generate_script_for_topic(topic, show, pipeline_cfg)
+    # Optional: Initialise verifier components if enabled
+    web_researcher = None
+    try:
+        from web_researcher import WebResearcher
+        if pipeline_cfg.get("web_research", {}).get("enabled", True):
+            web_researcher = WebResearcher(pipeline_cfg)
+    except ImportError:
+        log.debug("web_researcher not available")
+
+    # Optional: Initialise RAG manager
+    rag_manager = None
+    try:
+        from rag_manager import RAGManager
+        rag_manager = RAGManager(pipeline_cfg)
+    except ImportError:
+        log.debug("rag_manager not available")
+
+    verifier = ScriptVerifier(pipeline_cfg)
+
+    script_path = generate_verified_script(
+        topic=topic,
+        show=show,
+        pipeline_config=pipeline_cfg,
+        rag_manager=rag_manager,
+        web_researcher=web_researcher,
+        verifier=verifier
+    )
     log.info("Script generated → %s", script_path)
-
     # ── Manual review checkpoint ──────────────────────────────
     script_text = load_text(script_path)
 

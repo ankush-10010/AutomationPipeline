@@ -1,0 +1,44 @@
+You are a media analyst specializing in TV show episode summarization for {show_name}.
+
+Analyze the following dialogue transcript from Season {season}, Episode {episode}.
+{filename_title}
+
+Based on the dialogue below, produce a structured JSON summary of this episode.
+
+--- DIALOGUE START ---
+{dialogue_text}
+--- DIALOGUE END ---
+
+Return ONLY a valid JSON object with the following fields:
+- "title": the episode title (infer from dialogue or use the filename title if available)
+- "one_line": a single-sentence summary of the episode (max 25 words)
+- "summary": a 3-5 sentence plot summary covering the main story arc
+- "key_events": an array of 4-8 key plot events in chronological order (short sentences)
+- "characters_featured": an array of character names who appear or are mentioned prominently
+- "themes": an array of 2-4 thematic elements explored in this episode
+- "locations": an array of notable locations/settings featured in the episode
+
+Rules:
+- Focus on the MAIN plot and most important character interactions
+- Keep "key_events" entries brief (under 15 words each)
+- For "characters_featured", include only characters with meaningful roles
+- For "themes", use abstract concepts (e.g., "family loyalty", "identity crisis", "power")
+- If you cannot determine the episode title from dialogue, use the filename title or "Unknown"
+
+Example output format:
+{{
+  "title": "Pilot",
+  "one_line": "Rick takes Morty on a dangerous adventure to another dimension for mega seeds.",
+  "summary": "Rick drags Morty out of bed for a late-night adventure in his flying car. They travel to Dimension 35-C to collect mega tree seeds, but their portal gun breaks, forcing them to go through interdimensional customs. Rick makes Morty smuggle the seeds while avoiding alien bureaucrats.",
+  "key_events": [
+    "Rick wakes Morty for a late-night adventure",
+    "They fly to Dimension 35-C in Rick's car",
+    "Morty falls and breaks his legs",
+    "Portal gun runs out of charge",
+    "They go through intergalactic customs",
+    "Morty smuggles mega seeds through customs"
+  ],
+  "characters_featured": ["Rick", "Morty", "Beth", "Jerry", "Mr. Goldenfold"],
+  "themes": ["family dysfunction", "adventure", "intelligence vs. authority"],
+  "locations": ["Smith household", "Dimension 35-C", "Intergalactic customs"]
+}}
