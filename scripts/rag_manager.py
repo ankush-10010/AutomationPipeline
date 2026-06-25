@@ -19,6 +19,10 @@ class RAGManager:
         self.theories_path = get_project_path("theories_db", pipeline_config)
         self.wiki_path = get_project_path("wiki_db", pipeline_config)
         
+        # New episode index path
+        ep_cfg = pipeline_config.get("episode_index", {})
+        self.episode_index_path = get_project_path("episode_index", pipeline_config) if "episode_index" in pipeline_config.get("paths", {}) else (Path(ep_cfg.get("path", "./episode_index.json")).resolve() if Path(ep_cfg.get("path", "./episode_index.json")).is_absolute() else get_project_path("vector_db_dir", pipeline_config).parent / ep_cfg.get("path", "./episode_index.json").lstrip("./"))
+
         self.db_dir.mkdir(parents=True, exist_ok=True)
         self.subtitles_dir.mkdir(parents=True, exist_ok=True)
         self.theories_path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,12 +145,54 @@ class RAGManager:
         wiki_str += "\n\n".join(matched_wiki)
         return wiki_str
 
-    def get_combined_context(self, query: str) -> str:
+    def query_episode_index(self, query: str) -> str:
+        """Find relevant episodes based on the query."""
+        if not self.episode_index_path.exists():
+            return ""
+            
+        try:
+            with open(self.episode_index_path, 'r', encoding='utf-8') as f:
+                episodes = json.load(f)
+        except json.JSONDecodeError:
+            return ""
+
+        stop_words = {"what", "why", "who", "when", "how", "the", "a", "an", "is", "are", "do", "does", "did", "in", "on", "at", "to", "for", "of", "and", "or"}
+        keywords = {w for w in query.lower().split() if w not in stop_words}
+        matched_episodes = []
+        
+        # episode_index is keyed by "s1e1", value is dict with title/summary
+        for ep_key, ep_data in episodes.items():
+            ep_str = json.dumps(ep_data).lower()
+            if any(kw in ep_str for kw in keywords):
+                title = ep_data.get("title", ep_key)
+                summary = ep_data.get("summary", ep_data.get("one_line", ""))
+                matched_episodes.append(f"{ep_key.upper()} - {title}: {summary}")
+                
+        if not matched_episodes:
+            return ""
+            
+        ep_str = "--- Canonical Episode Summaries ---\n"
+        ep_str += "\n\n".join(matched_episodes[:5])  # Limit to top 5
+        return ep_str
+
+    def get_combined_context(self, query: str, dossier: dict = None) -> str:
         canon = self.query_subtitles(query)
         wiki = self.query_wiki(query)
         theories = self.query_theories(query)
+        episodes = self.query_episode_index(query)
         
         combined = []
+        
+        # Web research dossier gets highest priority
+        if dossier:
+            try:
+                from web_researcher import format_dossier_for_prompt
+                combined.append("--- Web Research Dossier ---\n" + format_dossier_for_prompt(dossier))
+            except ImportError:
+                pass
+                
+        if episodes:
+            combined.append(episodes)
         if canon:
             combined.append(canon)
         if wiki:
