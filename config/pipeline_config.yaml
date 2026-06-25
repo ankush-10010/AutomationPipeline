@@ -68,14 +68,14 @@ video:
 
   # Caption styling (TikTok-style word-by-word)
   captions:
-    font: "Arial"
-    font_size: 64
+    font: "Arial Bold Italic"                # Bolder and slightly italic
+    font_size: 72                            # Slightly larger
     font_color: "white"
     highlight_color: "#FFD700"               # Gold for active word
     outline_color: "black"
-    outline_width: 3
+    outline_width: 4
     position: "bottom"                       # bottom third of screen
-    margin_bottom: 200                       # pixels from bottom edge
+    margin_bottom: 450                       # Increased to stay in the blur zone (above YT UI)
     words_per_group: 4                       # Show 3-5 words at a time
 
   # Ken Burns effect for static images / clips
