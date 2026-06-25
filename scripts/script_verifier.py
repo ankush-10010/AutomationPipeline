@@ -451,15 +451,24 @@ def generate_verified_script(
                 len(result["corrections"]),
                 retries + 1,
             )
+            previous_script = script
             correction_prompt = verifier.build_correction_prompt(
                 topic, script, result["corrections"]
             )
-            script = call_ollama(correction_prompt, pipeline_config)
+            candidate_script = call_ollama(correction_prompt, pipeline_config)
 
-            if not script.strip():
+            if not candidate_script.strip():
                 log.error("Ollama returned empty correction — keeping previous version")
                 break
 
+            # Safety filter: detect if the LLM started writing meta fact-checking commentary
+            meta_phrases = ["fact-check", "revisit this", "original script", "corrections required", "let's revisit", "hallucinat"]
+            if any(p in candidate_script.lower() for p in meta_phrases):
+                log.warning("Correction introduced robotic meta-commentary — rejecting correction and keeping previous draft")
+                script = previous_script
+                break
+
+            script = candidate_script
             retries += 1
     elif not verification_enabled:
         log.info("Verification disabled — skipping fact-check")

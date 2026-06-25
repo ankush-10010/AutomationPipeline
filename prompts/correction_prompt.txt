@@ -1,4 +1,5 @@
-You are rewriting a YouTube Shorts script about "{topic}" to fix specific factual errors.
+You are rewriting a viral YouTube Shorts script about "{topic}".
+Your previous draft had a few minor lore inaccuracies. You must rewrite the script to seamlessly weave in the corrected facts below.
 
 ORIGINAL SCRIPT:
 ---
@@ -8,13 +9,12 @@ ORIGINAL SCRIPT:
 CORRECTIONS REQUIRED:
 {corrections_list}
 
-RULES:
-- Fix ONLY the issues listed above. Do not rewrite sections that are already correct.
-- Maintain the exact same tone, pacing, and narration style.
-- Keep the script within the same word count range as the original (120-180 words).
-- Do not add new information beyond what is needed for the corrections.
-- Do not add markdown, titles, speaker tags, or formatting — output raw spoken text only.
-- Preserve the hook and overall structure of the script.
+CRITICAL DIRECTIVES:
+1. STAY IN CHARACTER: Write purely as an engaging, cynical, viral narrator. 
+2. ZERO META-COMMENTARY: You are strictly forbidden from saying "Let's fact-check this", "Let's revisit this", "According to corrections", "In episode S5E6", "This shows that", or "Hallucination". NEVER mention the fact-checking process or episode numbers.
+3. SEAMLESS INTEGRATION: Blend the corrected facts naturally into the dramatic lore. The audience should feel like they are hearing dark, forbidden secrets—not a textbook correction.
+4. STRICT WORD COUNT: Exactly 120 to 180 words.
+5. FORMATTING: Output raw spoken text only. Zero markdown, no asterisks, no titles, no speaker tags (like "Narrator:").
 
 OUTPUT:
-Generate ONLY the corrected raw script text, ready for TTS. No explanations, no annotations.
+Generate ONLY the raw narration text, ready for TTS audio synthesis.
