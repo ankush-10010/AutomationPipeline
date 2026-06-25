@@ -68,8 +68,8 @@ video:
 
   # Caption styling (TikTok-style word-by-word)
   captions:
-    font: "Arial Bold Italic"                # Bolder and slightly italic
-    font_size: 72                            # Slightly larger
+    font: "assets/fonts/BebasNeue.ttf"               # Bolder and slightly italic
+    font_size: 68                            # Slightly larger
     font_color: "white"
     highlight_color: "#FFD700"               # Gold for active word
     outline_color: "black"
