@@ -1160,6 +1160,8 @@ Phases (in order):
 
 
 def main():
+    import time 
+    start = time.time()
     import torch
     if torch.cuda.is_available():
         log.info("\033[92m🚀 Orchestrator is fully utilizing the GPU (CUDA)!\033[0m")
@@ -1183,7 +1185,8 @@ def main():
         schedule_time=args.schedule,
         use_kaggle=args.use_kaggle,
     )
-
-
+    end = time.time()
+    print("---------------------time taken----------------------------")
+    print("TOTAL TIME TAKEN : ", (end-start))
 if __name__ == "__main__":
     main()
