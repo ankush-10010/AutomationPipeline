@@ -830,4 +830,9 @@ research_cache/                ← NEW: Cached web research dossiers
 
 The key insight: **generation and verification should be separate concerns handled by separate LLM calls**. Your script generator is the "writer" — creative, fast, occasionally wrong. The verifier is the "editor" — strict, fact-driven, catches mistakes. The web researcher is the "researcher" — provides ground truth neither the writer nor editor could have known on their own.
 
+### v2.1 Upgrade: Fresh Prompt Injection & Guardrails Filter
+When correcting factual errors, small models (8B) struggle to surgically patch their own broken output without outputting meta commentary (*"Let's fact check this..."*). To solve this:
+1. **Fresh Prompt Injection (Solution #2)**: Instead of passing broken drafts back to the LLM, the verifier extracts the exact demanded facts and appends them to the **original generation prompt** for a completely fresh draft.
+2. **Output Guardrails Sanitizer (Solution #3)**: A final regex and trigger filter (`_sanitize_script`) strips any stray meta-commentary sentences before the script is saved to disk.
+
 This is the same pattern used in production AI systems (Google, OpenAI, etc.): generate → verify → correct. It works because catching errors is easier than preventing them.

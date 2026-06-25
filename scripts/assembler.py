@@ -149,6 +149,7 @@ def prepare_clip_segment(clip_path: str, duration: float, clip_start: float,
 
     args = [
         "-y",
+        "-stream_loop", "-1",
         "-ss", str(clip_start),
         "-i", str(clip_path),
         "-t", str(duration),

@@ -358,6 +358,36 @@ class ScriptVerifier:
         return response_text
 
 
+def _sanitize_script(text: str) -> str:
+    """Strip robotic fact-checking commentary and academic meta-phrases from final text."""
+    cleaned = re.sub(r"```[a-z]*\n?", "", text)
+    cleaned = cleaned.replace("```", "")
+    
+    lines = [l.strip() for l in cleaned.split("\n") if l.strip()]
+    good_lines = []
+    
+    meta_triggers = [
+        "fact-check", "revisit this", "let's revisit", "let's fact",
+        "corrections", "verifier", "hallucinat", "according to our database",
+        "shall we?", "let's examine the facts", "original script", "in s5e6", "in s8e7"
+    ]
+    
+    for line in lines:
+        sentences = re.split(r'(?<=[.!?])\s+', line)
+        good_sentences = []
+        for s in sentences:
+            s_lower = s.lower()
+            if any(trig in s_lower for trig in meta_triggers):
+                log.warning("Sanitizer stripped academic/meta sentence: \"%s\"", s)
+                continue
+            good_sentences.append(s)
+        if good_sentences:
+            good_lines.append(" ".join(good_sentences))
+            
+    result = " ".join(good_lines).strip()
+    return result if result else text
+
+
 # ============================================================================
 # Standalone verified-generation function
 # ============================================================================
@@ -444,28 +474,27 @@ def generate_verified_script(
                 )
                 break
 
-            # Build correction prompt and regenerate
+            # Solution #2: Regenerate from scratch injecting verified facts into base prompt
             log.info(
-                "Script needs correction (score: %d, %d issues) — retry %d",
+                "Script needs correction (score: %d, %d issues) — regenerating fresh draft (retry %d)",
                 result["score"],
                 len(result["corrections"]),
                 retries + 1,
             )
-            previous_script = script
-            correction_prompt = verifier.build_correction_prompt(
-                topic, script, result["corrections"]
+            corrections_text = "\n".join(
+                f"- VERIFIED CANONICAL TRUTH: {c.get('suggested_fix', c.get('issue', ''))}"
+                for c in result["corrections"]
             )
-            candidate_script = call_ollama(correction_prompt, pipeline_config)
+            fresh_prompt = prompt + (
+                "\n\nCRITICAL MULTIVERSAL ARCHIVE FACT INJECTION:\n"
+                "A multiversal lore scan flagged inaccuracies. You MUST build a completely fresh script incorporating these verified truths:\n"
+                + corrections_text +
+                "\n\nREMINDER: Narrate purely in-character. NEVER mention corrections, fact-checking, or episode numbers."
+            )
+            candidate_script = call_ollama(fresh_prompt, pipeline_config)
 
             if not candidate_script.strip():
                 log.error("Ollama returned empty correction — keeping previous version")
-                break
-
-            # Safety filter: detect if the LLM started writing meta fact-checking commentary
-            meta_phrases = ["fact-check", "revisit this", "original script", "corrections required", "let's revisit", "hallucinat"]
-            if any(p in candidate_script.lower() for p in meta_phrases):
-                log.warning("Correction introduced robotic meta-commentary — rejecting correction and keeping previous draft")
-                script = previous_script
                 break
 
             script = candidate_script
@@ -474,6 +503,9 @@ def generate_verified_script(
         log.info("Verification disabled — skipping fact-check")
     elif not dossier:
         log.info("No research dossier — skipping verification")
+
+    # Solution #3: Guardrails post-processing filter to sanitize text before saving
+    script = _sanitize_script(script)
 
     # ── Step 4: Save outputs ──────────────────────────────────────────
     script_path = save_script(topic, script, pipeline_config)
