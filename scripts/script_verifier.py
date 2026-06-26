@@ -371,7 +371,9 @@ def _sanitize_script(text: str) -> str:
         "corrections", "verifier", "hallucinat", "according to our database",
         "shall we?", "let's examine the facts", "original script", "in s5e6", "in s8e7",
         "to construct this script", "i will first identify", "pivotal facts",
-        "facts established", "logical conclusion", "as evidenced by"
+        "facts established", "logical conclusion", "as evidenced by",
+        "here is a rewritten", "here is the script", "based on your topic",
+        "note:", "i've rewritten", "this script assumes", "rewritten script based"
     ]
     
     for line in lines:
@@ -489,9 +491,9 @@ def generate_verified_script(
             )
             fresh_prompt = prompt + (
                 "\n\nCRITICAL MULTIVERSAL ARCHIVE FACT INJECTION:\n"
-                "A multiversal lore scan flagged inaccuracies. You MUST build a completely fresh script incorporating these verified truths:\n"
+                "A multiversal lore scan flagged inaccuracies. Incorporate these verified canon truths into your script:\n"
                 + corrections_text +
-                "\n\nREMINDER: Narrate purely in-character. NEVER mention corrections, fact-checking, or episode numbers."
+                "\n\nFINAL MANDATE: Output strictly your 4-act narration script using the exact [HOOK], [PROOF], [ESCALATION], and [PAYOFF] bracket headers. Zero chatbot greetings ('Here is the script'), zero title introductions, and zero concluding notes ('Note:'). Start speaking immediately with [HOOK]."
             )
             candidate_script = call_ollama(fresh_prompt, pipeline_config)
 
@@ -529,6 +531,12 @@ def generate_verified_script(
             "results": verification_results,
         })
         log.info("Verification log saved → %s", log_path)
+
+    try:
+        from metadata_generator import generate_upload_metadata
+        generate_upload_metadata(script_path, script_path.read_text(encoding="utf-8"), show, pipeline_config)
+    except Exception as exc:
+        log.warning("Failed to generate upload metadata: %s", exc)
 
     return script_path
 
