@@ -31,33 +31,64 @@ This repository houses a **compound AI engineering system** designed to solve th
 
 ---
 
-## 🏗️ System Architecture & Workflow
+## 🏗️ End-to-End System Architecture & Pipeline Workflow
 
-The pipeline runs sequentially across 8 distinct architectural boundaries. If interrupted by rate limits, hardware blips, or manual review gates, execution hydrates cleanly from `pipeline_state.json`.
+The newly supercharged AI Explainer content engine decouples production into an idempotent, fault-tolerant workflow spanning media ingestion, vector memory formation, and dynamic video assembly. If interrupted by rate limits, hardware blips, or review gates, execution hydrates cleanly from persistent state ledgers.
 
 ```mermaid
-graph TD
-    classDef llm fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef ml fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef media fill:#bfb,stroke:#333,stroke-width:2px;
-    classDef api fill:#fbb,stroke:#333,stroke-width:2px;
+flowchart TD
+    classDef phase fill:#2b2d42,stroke:#8d99ae,stroke-width:2px,color:#edf2f4;
+    classDef script fill:#1d3557,stroke:#457b9d,stroke-width:2px,color:#f1faee;
+    classDef data fill:#2a9d8f,stroke:#264653,stroke-width:2px,color:#ffffff;
+    classDef db fill:#e76f51,stroke:#f4a261,stroke-width:2px,color:#ffffff;
 
-    A([1. topic_mine]) -->|Ollama LLM Queue| B([2. script_gen])
-    B -->|RAG + Fact Dossier| C{Script Review Gate}
-    C -->|Approved| D([3. tts])
-    C -->|Rejected| X([Abort / Auto-Heal])
-    D -->|Local Piper / Cloud XTTS| E([4. caption])
-    E -->|Faster-Whisper Word-Timestamps| F([5. match])
-    F -->|YOLOv8 + VLM + Embeddings| G([6. assemble])
-    G -->|FFmpeg Ken Burns + Subtitles| H([7. thumbnail])
-    H -->|Frame Extraction + Overlay| I([8. publish])
-    I -->|YouTube Data API v3| J((Published asset))
+    subgraph Phase1 ["1. Ingestion & Indexing Phase (clip_indexer_allphasesUpdated.py)"]
+        RawMP4["Whole Episode MP4"] --> Split["scene_splitter.py"]
+        Split --> Sub["clip_indexer_subtitles.py"]
+        Sub --> Embed["clip_indexer_embed.py"]
+        Embed --> YOLO["clip_indexer_yolo.py"]
+        YOLO --> Enrich["enrich_clip_characters.py"]
+        RawMP4 --> EpIdx["episode_indexer.py"]
+    end
 
-    class A,B llm;
-    class D,E,F ml;
-    class G,H media;
-    class I api;
+    subgraph Phase2 ["2. Hybrid RAG Vectorization (rag_manager.py)"]
+        ColSub["ChromaDB Collection: subtitles"]
+        ColEp["ChromaDB Collection: episodes.json"]
+        ColWiki["ChromaDB Collection: wiki.json"]
+        ColTopic["ChromaDB Collection: topics/theories.json"]
+    end
+
+    Enrich --> ColSub
+    EpIdx --> ColEp
+    ExtWiki["External Wiki Data"] --> ColWiki
+    ExtTopics["Mining Queue Topics"] --> ColTopic
+
+    subgraph Phase3 ["3. Script Generation & Assembly Phase"]
+        TopicIn["Topic Input"] --> HyDE["HyDE Monologue Expansion"]
+        HyDE --> Pull["Multi-Vector ChromaDB Pull (12 hits)"]
+        
+        ColSub -.-> Pull
+        ColEp -.-> Pull
+        ColWiki -.-> Pull
+        ColTopic -.-> Pull
+
+        Pull --> Distiller["Llama Context Distiller (Verified Lore Dossier)"]
+        Distiller --> ScriptGen["script_generator.py (4-Act Structure: Hook, Proof, Escalation, Payoff)"]
+        ScriptGen --> Verifier["script_verifier.py (Fluff Sanitization)"]
+        Verifier --> Matcher["clip_matcher.py (+7.0 Character Boost, Outro/Credits Filtering)"]
+        Matcher --> FinalOut["Final MP4 & Metadata Sync"]
+    end
+
+    class RawMP4,TopicIn,ExtWiki,ExtTopics data;
+    class Split,Sub,Embed,YOLO,Enrich,EpIdx,HyDE,Pull,Distiller,ScriptGen,Verifier,Matcher,FinalOut script;
+    class ColSub,ColEp,ColWiki,ColTopic db;
 ```
+
+The content production lifecycle initiates with the ingestion and indexing phase orchestrated by `clip_indexer_allphasesUpdated.py`, which transforms raw full-length video files into structured, searchable multi-modal assets. When a whole episode MP4 enters the system, it bifurcates into two parallel processing tracks. Along the primary visual and dialogue track, `scene_splitter.py` slices the continuous video into discrete visual scenes based on frame-to-frame histogram shifts. These scenes flow directly into `clip_indexer_subtitles.py` to align dialogue transcripts with exact millisecond timestamps, followed by `clip_indexer_embed.py` which generates dense semantic vector representations of the spoken dialogue. Next, `clip_indexer_yolo.py` deploys custom object detection models across video frames to identify specific character bounding boxes and screen presence. Finally, `enrich_clip_characters.py` fuses these visual detection logs with the dialogue transcripts to output richly annotated clip metadata. Concurrently, the second processing track routes the raw episode MP4 through `episode_indexer.py` to extract macro-level narrative summaries and structural plot progression.
+
+Once the raw media is fully indexed, `rag_manager.py` executes the hybrid retrieval-augmented generation vectorization process to establish long-term system memory. This centralized manager ingests the processed clip dialogue from `subtitles`, the macro narrative summaries from `episodes.json`, canonical background lore from `wiki.json`, and community engagement concepts from `topics/theories.json`. Rather than commingling these distinct data types, `rag_manager.py` partitions them into four dedicated, persistent ChromaDB vector collections. This strict architectural separation guarantees that downstream generation queries can perform targeted multi-vector searches across granular dialogue, episodic context, factual wiki documentation, and viral thematic structures independently without cross-contamination.
+
+The final phase synthesizes these vectorized knowledge bases into highly engaging short-form vertical videos optimized for TikTok and YouTube Shorts. When a conceptual topic input is introduced, the engine applies Hypothetical Document Embeddings via HyDE monologue expansion to generate an idealized narrative response. This expanded query executes a multi-vector ChromaDB pull across all four persistent collections to retrieve the top twelve most semantically relevant context hits. A Llama context distiller condenses these raw retrieval hits into a verified lore dossier, stripping away irrelevant noise while preserving canonical ground truth. Fed by this grounded dossier, `script_generator.py` crafts the narration using a strict four-act dramatic structure consisting of an attention-grabbing hook, empirical proof, narrative escalation, and a satisfying payoff. To maintain viewer retention, `script_verifier.py` subsequently audits the draft to perform fluff sanitization, eliminating repetitive phrasing or pacing drag. Once verified, `clip_matcher.py` pairs each narration segment with optimal video B-roll by applying a positive seven-point scoring boost to clips featuring matching visual characters while strictly filtering out outro sequences and black screen credits. The pipeline culminates in final MP4 video rendering and metadata synchronization, readying the finished short-form asset for immediate publishing.
 
 ---
 
@@ -126,25 +157,33 @@ Instead of wrapping code in generic `try/except` blocks, the orchestrator mainta
 ## 📂 Repository Structure
 
 ```text
-├── 📁 config/                 # YAML configuration definitions (Models, API endpoints, thresholds)
-├── 📁 notebooks/              # GPU Colab notebooks for cloud-offloaded XTTS voice synthesis
-├── 📁 prompts/                # System prompts for Topic Miner, Script Verifier, and RAG agents
-├── 📁 scripts/                # Core modular execution engine
-│   ├── orchestrator.py        # Master 8-phase pipeline controller & state ledger manager
-│   ├── topic_miner.py         # Phase 1a: Autonomous topic ideation queue manager
-│   ├── script_generator.py    # Phase 1b: RAG-augmented script drafting engine
-│   ├── web_researcher.py      # Fact dossier compiler via search APIs
-│   ├── script_verifier.py     # Closed-loop fact-checking auditor loop
-│   ├── tts_local.py           # Phase 2: Local neural voice synthesis (Piper TTS)
-│   ├── captioner.py           # Phase 3: Faster-Whisper word-level timestamp extraction
-│   ├── clip_matcher.py        # Phase 4: Multi-modal visual assembly manifest builder
-│   ├── assembler.py           # Phase 5: Subprocess FFmpeg hardware video compositor
-│   ├── thumbnail_generator.py # Phase 6: Computer vision frame ranker & thumbnail renderer
-│   ├── publisher.py           # Phase 7: YouTube Data API v3 OAuth upload controller
-│   ├── YOLO_finetuning.py     # Custom YOLOv8 training pipeline for character detection
-│   └── clip_indexer_vision.py # LLaVA local VLM automated scene tagger
-├── 📁 vector_db/              # Persistent ChromaDB vector collections
-└── README.md                  # System documentation
+├── 📁 config/                         # YAML configuration definitions (Models, API endpoints, thresholds)
+├── 📁 notebooks/                      # GPU Colab notebooks for cloud-offloaded XTTS voice synthesis
+├── 📁 prompts/                        # System prompts for Topic Miner, Script Verifier, and RAG agents
+├── 📁 scripts/                        # Core modular execution engine
+│   ├── orchestrator.py                # Master 8-phase pipeline controller & state ledger manager
+│   ├── clip_indexer_allphasesUpdated.py # Master pipeline for video ingestion, splitting, and CV tagging
+│   ├── scene_splitter.py              # Visual scene boundary detection via histogram shifts
+│   ├── clip_indexer_subtitles.py      # Subtitle alignment and timestamp extraction engine
+│   ├── clip_indexer_embed.py          # Dialogue embedding generator for vector retrieval
+│   ├── clip_indexer_yolo.py           # Frame-level YOLOv8 object and character detection
+│   ├── enrich_clip_characters.py      # Fusion script combining CV character logs with subtitle text
+│   ├── episode_indexer.py             # Macro narrative summary and plot progression extractor
+│   ├── rag_manager.py                 # Multi-collection ChromaDB ingestion and vectorization manager
+│   ├── topic_miner.py                 # Phase 1a: Autonomous topic ideation queue manager
+│   ├── script_generator.py            # Phase 1b: 4-Act structure RAG script drafting engine
+│   ├── web_researcher.py              # Fact dossier compiler via search APIs
+│   ├── script_verifier.py             # Closed-loop fluff sanitization and lore auditor loop
+│   ├── tts_local.py                   # Phase 2: Local neural voice synthesis (Piper TTS)
+│   ├── captioner.py                   # Phase 3: Faster-Whisper word-level timestamp extraction
+│   ├── clip_matcher.py                # Phase 4: Multi-modal visual B-roll matcher (+7.0 char boost)
+│   ├── assembler.py                   # Phase 5: Subprocess FFmpeg hardware video compositor
+│   ├── thumbnail_generator.py         # Phase 6: Computer vision frame ranker & thumbnail renderer
+│   ├── publisher.py                   # Phase 7: YouTube Data API v3 OAuth upload controller
+│   ├── YOLO_finetuning.py             # Custom YOLOv8 training pipeline for character detection
+│   └── clip_indexer_vision.py         # LLaVA local VLM automated scene tagger
+├── 📁 vector_db/                      # Persistent ChromaDB vector collections (4 dedicated spaces)
+└── README.md                          # System documentation
 ```
 
 ---
