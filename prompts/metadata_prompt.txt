@@ -8,19 +8,26 @@ NARRATION SCRIPT:
 
 YOUR JOB:
 1. Generate THREE distinct viral titles using these proven CTR archetypes:
-   - Type A (The Betrayal/Lie): [Character or Show] Actually LIED About [Topic] 😱
-   - Type B (The Curiosity Gap): The Dark [Show] Secret Nobody Noticed 💀
-   - Type C (The Forbidden Truth): Why [Character] Was NEVER Supposed To [Action] 🔥
-   (Titles must be 8-12 words, use capital letters on key nouns for emphasis, and end with a high-CTR emotional emoji)
+   - Type A (The Lie): [Show/Char] Actually LIED About [Topic] 😱
+   - Type B (The Secret): The Dark [Show/Char] Secret Nobody Saw 💀
+   - Type C (The Forbidden): Why [Char] Was NEVER Supposed To [Action] 🔥
+
+   CRITICAL TITLE RULES:
+   - Must be SHORT: Maximum 6 to 8 words (strictly under 45 characters total to prevent mobile truncation).
+   - {show_name} or the primary character name MUST appear within the first 3 words for search indexing.
+   - Use ALL CAPS on 1 or 2 high-impact threat nouns (e.g., LIED, TRAP, FAKE, SECRET, POISON).
+   - Do NOT wrap titles in quotation marks.
 
 2. Generate an SEO DESCRIPTION:
-   - Exactly 2 compelling sentences summarizing the dark theory or secret.
-   - Include keywords related to {show_name} for YouTube search indexing.
+   - Exactly 2 punchy sentences.
+   - Sentence 1 MUST be under 60 characters and act as a secondary curiosity hook containing {show_name}.
+   - Sentence 2 summarizes the core theory logic for algorithm indexing.
 
 3. Generate HASHTAG STACKS:
-   - Exactly 6 to 8 high-traffic hashtags including #{show_slug} #shorts #theory #lore #animation
+   - Exactly 6 high-traffic hashtags.
+   - ORDER IS CRITICAL: Put #{show_slug} first, #shorts second, #theory third, followed by 3 niche lore tags.
 
-OUTPUT FORMAT (strictly follow this layout):
+OUTPUT FORMAT (strictly follow this layout with zero preliminary conversational text):
 TITLE_LIE: <Type A title>
 TITLE_GAP: <Type B title>
 TITLE_TRUTH: <Type C title>
