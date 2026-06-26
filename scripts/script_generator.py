@@ -160,8 +160,12 @@ def save_script(topic: str, script_text: str, pipeline_config: dict) -> Path:
             out_path = approved_dir / f"{sanitize_filename(topic)}_{counter}.txt"
             counter += 1
 
+    # Strip section brackets like [HOOK], [PROOF], [ESCALATION], [PAYOFF]
+    clean_text = re.sub(r"\[.*?\]\s*", "", script_text).strip()
+    clean_text = re.sub(r"\n{3,}", "\n\n", clean_text)
+
     with open(out_path, "w", encoding="utf-8") as f:
-        f.write(script_text.strip())
+        f.write(clean_text)
         f.write("\n")
 
     log.info("Script saved → %s", out_path)
@@ -187,7 +191,14 @@ def generate_script_for_topic(
         log.error("Ollama returned an empty response for topic: %s", topic)
         sys.exit(1)
 
-    return save_script(topic, script_text, pipeline_config)
+    script_path = save_script(topic, script_text, pipeline_config)
+    try:
+        from metadata_generator import generate_upload_metadata
+        generate_upload_metadata(script_path, script_path.read_text(encoding="utf-8"), show, pipeline_config)
+    except Exception as exc:
+        log.warning("Failed to generate upload metadata: %s", exc)
+
+    return script_path
 
 
 # ---------------------------------------------------------------------------
