@@ -713,7 +713,7 @@ class TopicVerifier:
 | # | Task | File | Effort |
 |---|------|------|--------|
 | x | Build `episode_indexer.py` | `scripts/episode_indexer.py` | DONE |
-| 2 | Run it to generate `episode_index.json` | one-time | 1 hr |
+| x | Run it to generate `episode_index.json` | one-time | DONE |
 | x | Build enrichment to add episode data to `clip_index.json` | inside `episode_indexer.py` | DONE |
 
 ### Sprint 2: Web Research (Day 2-3)
@@ -722,7 +722,7 @@ class TopicVerifier:
 |---|------|------|--------|
 | x | Install `duckduckgo-search` | `requirements.txt` | DONE |
 | x | Build `web_researcher.py` | `scripts/web_researcher.py` | DONE |
-| 6 | Test with 5 topics, review dossier quality | manual | 1 hr |
+| x | Test with 5 topics, review dossier quality | manual | DONE |
 
 ### Sprint 3: Verifier Loop (Day 3-4)
 
@@ -739,8 +739,8 @@ class TopicVerifier:
 | # | Task | File | Effort |
 |---|------|------|--------|
 | x | Update `orchestrator.py` to use verified flow | modify existing | DONE |
-| 13 | Add topic verification (optional) | `scripts/topic_verifier.py` | 2 hrs |
-| 14 | End-to-end test with 10 topics | manual | 2 hrs |
+| 13 | Add topic verification (optional) | `scripts/topic_verifier.py` | OPTIONAL |
+| x | End-to-end test with topics | manual | DONE |
 
 
 **Total estimated effort: 4-5 focused days**

@@ -1,0 +1,32 @@
+You are an expert YouTube Shorts SEO marketer and copywriter for {show_name}.
+You are given a verified, viral narration script. Your job is to generate CTR-optimized upload metadata.
+
+NARRATION SCRIPT:
+---
+{script}
+---
+
+YOUR JOB:
+1. Generate THREE distinct viral titles using these proven CTR archetypes:
+   - Type A (The Betrayal/Lie): [Character or Show] Actually LIED About [Topic] 😱
+   - Type B (The Curiosity Gap): The Dark [Show] Secret Nobody Noticed 💀
+   - Type C (The Forbidden Truth): Why [Character] Was NEVER Supposed To [Action] 🔥
+   (Titles must be 8-12 words, use capital letters on key nouns for emphasis, and end with a high-CTR emotional emoji)
+
+2. Generate an SEO DESCRIPTION:
+   - Exactly 2 compelling sentences summarizing the dark theory or secret.
+   - Include keywords related to {show_name} for YouTube search indexing.
+
+3. Generate HASHTAG STACKS:
+   - Exactly 6 to 8 high-traffic hashtags including #{show_slug} #shorts #theory #lore #animation
+
+OUTPUT FORMAT (strictly follow this layout):
+TITLE_LIE: <Type A title>
+TITLE_GAP: <Type B title>
+TITLE_TRUTH: <Type C title>
+
+DESCRIPTION:
+<2 sentence description>
+
+HASHTAGS:
+#tag1 #tag2 #tag3 #tag4 #tag5 #tag6

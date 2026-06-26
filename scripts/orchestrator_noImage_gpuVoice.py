@@ -675,6 +675,16 @@ def run_assemble(
     )
 
     state["phase_outputs"]["video_path"] = str(output_path)
+
+    script_path_str = state.get("phase_outputs", {}).get("script_path")
+    if script_path_str:
+        meta_src = Path(script_path_str).with_suffix(".metadata.txt")
+        if meta_src.exists():
+            import shutil
+            meta_dst = output_path.with_suffix(".metadata.txt")
+            shutil.copy2(meta_src, meta_dst)
+            log.info("Copied upload metadata → %s", meta_dst)
+
     return output_path
 
 
