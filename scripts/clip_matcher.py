@@ -94,6 +94,32 @@ def extract_theme_mentions(text: str, show_config: dict) -> set:
     return mentions
 
 
+def _is_banned_clip(clip: dict) -> bool:
+    """Check if a candidate clip is an outro, intro, end credits, or vanity card."""
+    fname = clip.get("filename", "").lower()
+    action = clip.get("action", "").lower()
+    tags = {str(t).lower() for t in clip.get("tags", [])}
+    summary = clip.get("episode_summary", "").lower()
+
+    banned_terms = {
+        "credits", "outro", "ending credits", "end credits", "theme song",
+        "title card", "executive producer", "adult swim", "directed by",
+        "written by", "logo", "vanity card", "production company", "created by",
+        "black screen"
+    }
+
+    if any(term in fname for term in ("outro", "credit", "ending", "intro")):
+        return True
+    if any(term in action for term in banned_terms):
+        return True
+    if any(term in tags for term in banned_terms):
+        return True
+    if any(term in summary for term in banned_terms):
+        return True
+
+    return False
+
+
 # ============================================================================
 # Clip scoring — keyword strategy
 # ============================================================================
@@ -148,14 +174,13 @@ def score_clip_keyword(segment_text: str, clip: dict, show_config: dict) -> floa
 
 def match_keyword(segment_text: str, clips: list, show_config: dict,
                   threshold: int = 1) -> tuple:
-    """Find the best clip using keyword matching.
-
-    Returns (best_clip, score) or (None, 0) if no match above threshold.
-    """
+    """Find the best clip using keyword matching."""
     best_clip = None
     best_score = 0.0
 
     for clip in clips:
+        if _is_banned_clip(clip):
+            continue
         s = score_clip_keyword(segment_text, clip, show_config)
         if s > best_score:
             best_score = s
@@ -185,33 +210,40 @@ def match_semantic(segment_text: str, clips: list, show_config: dict, embedding_
     best_score = -1.0
 
     seg_characters = extract_character_mentions(segment_text, show_config)
-    
-    # Convert incoming script text to mathematical vector
+    seg_keywords = extract_keywords(segment_text)
     segment_embedding = embedding_model.encode(segment_text).tolist()
 
     for clip in clips:
+        if _is_banned_clip(clip):
+            continue
         clip_emb = clip.get("embedding")
         if not clip_emb:
-            continue  # Skip clips that haven't been embedded yet
+            continue
 
-        # 1. Base Score: Cosine Similarity (Meaning match) -> yields 0 to 1
         sim = cosine_similarity(segment_embedding, clip_emb)
-        
-        # Scale to 0-10 so it fits the same scale as old keyword matching
         score = sim * 10.0
 
-        # 2. Hard constraint / Bonus: Character Matching
+        # Character matching precision boost
         clip_characters = {c.lower() for c in clip.get("characters", [])}
         char_overlap = seg_characters & clip_characters
-        
-        # Give a massive boost (5 points per character) if the requested characters actually exist
-        score += len(char_overlap) * 5.0
-        
+        if seg_characters:
+            if char_overlap:
+                score += len(char_overlap) * 7.0
+            else:
+                score -= 4.0
+
         # Location match bonus
         seg_locations = extract_location_mentions(segment_text, show_config)
         clip_location = clip.get("location", "").lower()
         if clip_location and clip_location in seg_locations:
             score += 2.0
+
+        # Enriched episode summary RAG overlap bonus
+        ep_summary = clip.get("episode_summary", "").lower()
+        if ep_summary:
+            ep_keywords = extract_keywords(ep_summary)
+            overlap = seg_keywords & ep_keywords
+            score += len(overlap) * 1.5
 
         if score > best_score:
             best_score = score
