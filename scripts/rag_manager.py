@@ -137,12 +137,12 @@ class RAGManager:
 
     def ingest_all(self):
         """Runs full RAG vectorization across all 4 databases."""
-        log.info("🚀 Starting total multiversal RAG vector ingestion...")
+        log.info("Starting total multiversal RAG vector ingestion...")
         self.ingest_subtitles()
         self.ingest_json_database(self.col_episodes, self.episode_index_path, "ep")
         self.ingest_json_database(self.col_wiki, self.wiki_path, "wiki")
         self.ingest_json_database(self.col_theories, self.theories_path, "theory")
-        log.info("✅ Total RAG vectorization complete!")
+        log.info("Total RAG vectorization complete!")
 
     # ── Intelligence Pre-Pass (HyDE + Distillation) ───────────────────────────
 
