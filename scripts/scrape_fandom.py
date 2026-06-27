@@ -232,27 +232,7 @@ def scrape_all_fandom_data(config: dict, custom_url: str = None, core_pages: lis
     
     log.info(f"Found {len(titles)} unique pages to scan. This might take a few minutes!")
     
-    all_theories = {}
-    all_wiki = {}
-    
-    for idx, title in enumerate(titles, 1):
-        log.info(f"--- Processing {idx}/{len(titles)}: {title} ---")
-        html = get_page_content(title)
-        intro_text, extracted_theories = extract_info_from_html(title, html)
-        
-        if intro_text:
-            all_wiki[title] = intro_text
-            
-        if extracted_theories:
-            all_theories.update(extracted_theories)
-            log.info(f" -> Found {len(extracted_theories)} relevant sections.")
-        else:
-            log.info(" -> No theory/trivia sections found.")
-            
-        # Be a good citizen, sleep 1.5 seconds between API calls
-        time.sleep(1.5)
-        
-    # Load existing and update
+    # Load existing state to allow resuming!
     existing_theories = {}
     if theories_path.exists():
         with open(theories_path, 'r', encoding='utf-8') as f:
@@ -261,15 +241,6 @@ def scrape_all_fandom_data(config: dict, custom_url: str = None, core_pages: lis
             except json.JSONDecodeError:
                 pass
                 
-    existing_theories.update(all_theories)
-    
-    # Create directory if it doesn't exist
-    theories_path.parent.mkdir(parents=True, exist_ok=True)
-    wiki_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    with open(theories_path, 'w', encoding='utf-8') as f:
-        json.dump(existing_theories, f, indent=4)
-        
     existing_wiki = {}
     if wiki_path.exists():
         with open(wiki_path, 'r', encoding='utf-8') as f:
@@ -277,8 +248,45 @@ def scrape_all_fandom_data(config: dict, custom_url: str = None, core_pages: lis
                 existing_wiki = json.load(f)
             except json.JSONDecodeError:
                 pass
+
+    log.info(f"Loaded {len(existing_wiki)} existing wiki pages. These will be skipped to allow resuming.")
+    
+    # Create directory if it doesn't exist
+    theories_path.parent.mkdir(parents=True, exist_ok=True)
+    wiki_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    for idx, title in enumerate(titles, 1):
+        if title in existing_wiki:
+            log.info(f"--- Skipping {idx}/{len(titles)}: {title} (Already scraped) ---")
+            continue
+            
+        log.info(f"--- Processing {idx}/{len(titles)}: {title} ---")
+        html = get_page_content(title)
+        intro_text, extracted_theories = extract_info_from_html(title, html)
+        
+        if intro_text:
+            existing_wiki[title] = intro_text
+            
+        if extracted_theories:
+            existing_theories.update(extracted_theories)
+            log.info(f" -> Found {len(extracted_theories)} relevant sections.")
+        else:
+            log.info(" -> No theory/trivia sections found.")
+            
+        # Auto-save every 50 pages to prevent Colab timeout data loss
+        if idx % 50 == 0:
+            log.info(f"💾 Auto-saving progress at page {idx}...")
+            with open(theories_path, 'w', encoding='utf-8') as f:
+                json.dump(existing_theories, f, indent=4)
+            with open(wiki_path, 'w', encoding='utf-8') as f:
+                json.dump(existing_wiki, f, indent=4)
                 
-    existing_wiki.update(all_wiki)
+        # Be a good citizen, sleep 1.5 seconds between API calls
+        time.sleep(1.5)
+        
+    # Final Save
+    with open(theories_path, 'w', encoding='utf-8') as f:
+        json.dump(existing_theories, f, indent=4)
     with open(wiki_path, 'w', encoding='utf-8') as f:
         json.dump(existing_wiki, f, indent=4)
         
