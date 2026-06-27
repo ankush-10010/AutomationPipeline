@@ -134,7 +134,7 @@ def enrich_characters(index_path: Path, show_config: dict):
     if isinstance(clip_data, dict):
         clip_data["clips"] = clips
     save_json(index_path, clip_data)
-    log.info("✅ Saved fully enriched clip database → %s", index_path)
+    log.info("Saved fully enriched clip database -> %s", index_path)
 
 
 def main():
