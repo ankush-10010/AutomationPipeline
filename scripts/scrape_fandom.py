@@ -11,10 +11,13 @@ from config_loader import get_project_path, load_pipeline_config, setup_logging
 
 log = setup_logging("scrape_fandom")
 
-API_URL = "https://rickandmorty.fandom.com/api.php"
+import argparse
+
+API_URL = "https://rickandmorty.fandom.com/api.php"  # Default, overwritten by args
 HEADERS = {
     "User-Agent": "AIExplainerBot/1.0 (Contact: local-dev) Python/3.x"
 }
+
 
 def search_fandom(query: str, limit: int = 20) -> list:
     """Searches the Fandom wiki using the MediaWiki API."""
@@ -35,6 +38,44 @@ def search_fandom(query: str, limit: int = 20) -> list:
     except Exception as e:
         log.error(f"Search failed: {e}")
         return []
+
+def get_all_pages(limit: str = "max") -> list:
+    """Fetches every single page title on the entire wiki (Main Namespace)."""
+    titles = []
+    apcontinue = None
+    log.info("Fetching ALL pages from the entire wiki... This will be massive!")
+    
+    while True:
+        params = {
+            "action": "query",
+            "list": "allpages",
+            "apnamespace": 0,  # Only main articles, ignore user/talk pages
+            "aplimit": limit,
+            "format": "json"
+        }
+        if apcontinue:
+            params["apcontinue"] = apcontinue
+            
+        try:
+            resp = requests.get(API_URL, params=params, headers=HEADERS)
+            resp.raise_for_status()
+            data = resp.json()
+            
+            pages = data.get("query", {}).get("allpages", [])
+            for p in pages:
+                titles.append(p["title"])
+                
+            apcontinue = data.get("continue", {}).get("apcontinue")
+            if not apcontinue:
+                break
+                
+            time.sleep(0.5)
+        except Exception as e:
+            log.error(f"Allpages fetch failed: {e}")
+            break
+            
+    log.info(f"Found a total of {len(titles)} pages on the entire wiki!")
+    return titles
 
 def get_category_members(category: str, limit: str = "max") -> list:
     """Fetches all page titles within a specific category."""
@@ -158,27 +199,36 @@ def extract_info_from_html(title: str, html: str) -> tuple[str, dict]:
                 
     return intro_text, theories
 
-def scrape_all_fandom_data(config: dict):
+def scrape_all_fandom_data(config: dict, custom_url: str = None, core_pages: list = None, scrape_all: bool = False):
+    global API_URL
+    if custom_url:
+        API_URL = custom_url
+        
     theories_path = get_project_path("theories_db", config)
     wiki_path = get_project_path("wiki_db", config)
     
-    # 1. Search for theory-related pages
     titles = set()
-    titles.update(search_fandom("Theories", limit=15))
-    titles.update(search_fandom("Theory", limit=15))
     
-    # 2. Add some known high-lore pages that might contain Trivia/Theories
-    core_lore_pages = [
-        "Rick Sanchez", "Morty Smith", "Evil Morty", "Rick Prime",
-        "Central Finite Curve", "Citadel of Ricks", "Mr. Poopybutthole",
-        "Space Cruiser", "Portal Gun"
-    ]
-    titles.update(core_lore_pages)
-    
-    # 3. Add ALL characters from the wiki Category
-    # We fetch all characters to populate wiki.json
-    character_pages = get_category_members("Category:Characters", limit="max")
-    titles.update(character_pages)
+    if scrape_all:
+        log.info("SCRAPE ALL MODE ACTIVATED: Fetching the entire wiki...")
+        titles.update(get_all_pages(limit="max"))
+    else:
+        # 1. Search for theory-related pages
+        titles.update(search_fandom("Theories", limit=15))
+        titles.update(search_fandom("Theory", limit=15))
+        
+        # 2. Add some known high-lore pages that might contain Trivia/Theories
+        core_lore_pages = core_pages if core_pages else [
+            "Rick Sanchez", "Morty Smith", "Evil Morty", "Rick Prime",
+            "Central Finite Curve", "Citadel of Ricks", "Mr. Poopybutthole",
+            "Space Cruiser", "Portal Gun"
+        ]
+        titles.update(core_lore_pages)
+        
+        # 3. Add ALL characters from the wiki Category
+        # We fetch all characters to populate wiki.json
+        character_pages = get_category_members("Category:Characters", limit="max")
+        titles.update(character_pages)
     
     log.info(f"Found {len(titles)} unique pages to scan. This might take a few minutes!")
     
@@ -235,5 +285,11 @@ def scrape_all_fandom_data(config: dict):
     log.info(f"Finished! Total theories in DB: {len(existing_theories)} | Total wiki entries: {len(existing_wiki)}")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Scrape Fandom Wiki using official API")
+    parser.add_argument("--url", default=None, help="The base API url, e.g. https://ben10.fandom.com/api.php")
+    parser.add_argument("--core-pages", nargs='+', default=None, help="Specific pages to forcefully scrape")
+    parser.add_argument("--scrape-all", action="store_true", help="Scrape every single page on the wiki (Warning: can take hours for large wikis)")
+    args = parser.parse_args()
+    
     config = load_pipeline_config()
-    scrape_all_fandom_data(config)
+    scrape_all_fandom_data(config, custom_url=args.url, core_pages=args.core_pages, scrape_all=args.scrape_all)

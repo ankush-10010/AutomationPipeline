@@ -5,6 +5,39 @@
 # This file drives topic mining prompts, script tone, and clip matching.
 
 shows:
+  ben10:
+    display_name: "Ben 10"
+    active: true
+
+    # -- Characters (used for clip matching + script prompts) --
+    characters:
+      - name: "Ben Tennyson"
+        aliases: [
+          "Ben", "Heatblast", "Wildmutt", "Diamondhead", "XLR8", "Grey Matter", "Four Arms", "Stinkfly", "Ripjaws", "Upgrade", "Ghostfreak",
+          "Cannonbolt", "Wildvine", "Upchuck", "Ditto", "Eye Guy", "Way Big", "Spitter", "Buzzshock", "Arctiguana", "Eon", "Blitzwolfer", "Snare-oh", "Frankenstrike",
+          "Swampfire", "Echo Echo", "Humungousaur", "Jetray", "Chromastone", "Brainstorm", "Spidermonkey", "Big Chill", "Goop", "Alien X", "Rath", "Nanomech", "Lodestar",
+          "Water Hazard", "Terraspin", "NRG", "Ampfibian", "Armodrillo", "Clockwork", "Fasttrack", "Chamalien", "Jury Rigg", "Eatle",
+          "Ultimate Swampfire", "Ultimate Echo Echo", "Ultimate Humungousaur", "Ultimate Spidermonkey", "Ultimate Big Chill", "Ultimate Wildmutt", "Ultimate Cannonbolt", "Ultimate Way Big"
+        ]
+        description: "The wielder of the Omnitrix, heroic but immature teenager."
+        visual: "white shirt with black stripe, green jacket, omnitrix on wrist"
+      - name: "Gwen Tennyson"
+        aliases: ["Gwen", "Lucky Girl"]
+        description: "Ben's intelligent, magic-wielding cousin."
+        visual: "orange hair, blue shirt with cat logo"
+      - name: "Max Tennyson"
+        aliases: ["Max", "Grandpa Max", "Magister"]
+        description: "Retired Plumber, wise grandfather."
+        visual: "old man, red hawaiian shirt"
+      - name: "Kevin Levin"
+        aliases: ["Kevin", "Kevin 11"]
+        description: "Reformed rogue, absorbs matter."
+        visual: "black shirt, dark hair, teenager"
+      - name: "Vilgax"
+        aliases: ["Vilgax"]
+        description: "The conqueror of 10 worlds, seeks the Omnitrix."
+        visual: "squid face, cyborg, giant"
+
   rick_and_morty:                              # Show slug (used in folder names, etc.)
     display_name: "Rick and Morty"
     active: true                               # Set to false to pause content for this show
