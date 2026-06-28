@@ -477,6 +477,15 @@ def assemble_video(manifest: dict, audio_path: str, output_path: str,
     log.info("Working directory: %s", tmp_dir)
 
     try:
+        # -- Step 0: Ensure video length matches audio exactly --
+        audio_dur = _get_video_duration(audio_path)
+        if audio_dur > 0 and segments:
+            last_seg = segments[-1]
+            if last_seg.get("end", 0) < audio_dur:
+                log.info("Extending last segment to match audio duration (%.2fs -> %.2fs)", 
+                         last_seg.get("end", 0), audio_dur)
+                last_seg["end"] = audio_dur
+
         # -- Step 1: Prepare each segment's visual -------------
         segment_files = []
         for seg in segments:
