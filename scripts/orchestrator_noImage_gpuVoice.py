@@ -586,7 +586,7 @@ def run_match(
 
     # FORCE NO AI IMAGES, USE CLOSEST CLIP
     matching_cfg["fallback"] = "generic_broll"
-    matching_cfg["threshold"] = 0.0 # Will take the best scoring clip even if terrible
+    matching_cfg["keyword_match_threshold"] = 0 # Will take the best scoring clip even if terrible
 
     manifest = build_manifest(
         caption_data=caption_data,

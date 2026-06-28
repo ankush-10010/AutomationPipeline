@@ -129,9 +129,12 @@ publishing:
 clip_matching:
   strategy: "keyword"                        # "keyword" (fast) or "llm" (better but slower)
   keyword_match_threshold: 1                 # Minimum keyword matches to count
+  cooldown_window: 10
+  cooldown_penalty: -50.0
+  prefer_adjacent_episode: true
   fallback: "ai_image"                       # "ai_image", "generic_broll", or "black"
   max_clip_duration_seconds: 5               # Don't use clips longer than this per segment
-  min_clip_duration_seconds: 1.5             # Minimum clip length
+  min_clip_duration_seconds: 1.3             # Minimum clip length
 
 # -- Web Research (for script verification) ---------------------------------
 web_research:
