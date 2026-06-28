@@ -248,7 +248,8 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
                   cooldown_penalty: float = -50.0,
                   dominant_episode_key: str = None,
                   seg_characters: set = None,
-                  seg_locations: set = None) -> tuple:
+                  seg_locations: set = None,
+                  ban_cooldown: bool = False) -> tuple:
     """Find the best clip using keyword matching.
 
     Clips whose filenames appear in cooldown_set receive cooldown_penalty
@@ -278,6 +279,8 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
 
         # Apply cooldown penalty if this clip was recently used
         if clip.get("filename", "") in cooldown_set:
+            if ban_cooldown:
+                continue
             s = (s * 0.01) - 0.001
 
         if s > best_score:
@@ -309,7 +312,8 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
                    cooldown_penalty: float = -50.0,
                    dominant_episode_key: str = None,
                    seg_characters: set = None,
-                   seg_locations: set = None) -> tuple:
+                   seg_locations: set = None,
+                   ban_cooldown: bool = False) -> tuple:
     """Find the best clip using Vector Embeddings (Semantic Search)."""
     if cooldown_set is None:
         cooldown_set = set()
@@ -366,6 +370,8 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
 
         # Apply cooldown penalty
         if clip.get("filename", "") in cooldown_set:
+            if ban_cooldown:
+                continue
             score = (score * 0.01) - 0.001
 
         if score > best_score:
@@ -605,25 +611,47 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                 seg_locations=active_locations,
             )
 
-        # --- Adjacency fallback ---
-        # If the best clip IS in cooldown (score was penalized but still won),
-        # try to find a nearby scene from the same episode instead.
+        # --- Adjacency fallback & Repetition Prevention ---
         if (best_clip is not None
-                and prefer_adjacent
                 and best_clip.get("filename", "") in cooldown_set):
-            adjacent = find_adjacent_clips(
-                best_clip, eligible_clips, cooldown_set, max_distance=5,
-            )
-            if adjacent:
-                adj_clip, dist = adjacent[0]
-                log.info(
-                    "Segment %d: swapped cooldown clip '%s' -> adjacent '%s' (dist=%d)",
-                    seg_id, best_clip.get("filename", "?"),
-                    adj_clip.get("filename", "?"), dist,
+            adj_clip = None
+            if prefer_adjacent:
+                adjacent = find_adjacent_clips(
+                    best_clip, eligible_clips, cooldown_set, max_distance=30,
                 )
+                if adjacent:
+                    adj_clip, dist = adjacent[0]
+                    log.info(
+                        "Segment %d: swapped cooldown clip '%s' -> adjacent '%s' (dist=%d)",
+                        seg_id, best_clip.get("filename", "?"),
+                        adj_clip.get("filename", "?"), dist,
+                    )
+                    stats["adjacent_used"] += 1
+            
+            if adj_clip:
                 best_clip = adj_clip
-                score = score - cooldown_penalty  # restore original score roughly
-                stats["adjacent_used"] += 1
+            else:
+                # Adjacency failed. We MUST NOT use this clip to prevent repetition.
+                # Re-run the match, absolutely banning cooldown clips.
+                log.info("Segment %d: adjacency failed, banning cooldown clips to prevent repetition.", seg_id)
+                if strategy == "semantic":
+                    best_clip, score = match_semantic(
+                        seg_text, eligible_clips, show_config, threshold,
+                        cooldown_set=cooldown_set,
+                        dominant_episode_key=dominant_episode_key,
+                        seg_characters=active_characters,
+                        seg_locations=active_locations,
+                        ban_cooldown=True,
+                    )
+                else:
+                    best_clip, score = match_keyword(
+                        seg_text, eligible_clips, show_config, threshold,
+                        cooldown_set=cooldown_set,
+                        dominant_episode_key=dominant_episode_key,
+                        seg_characters=active_characters,
+                        seg_locations=active_locations,
+                        ban_cooldown=True,
+                    )
 
         # --- Build manifest entry ---
         entry = {
