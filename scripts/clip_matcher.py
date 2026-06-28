@@ -260,27 +260,32 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
 
     best_clip = None
     best_score = -float("inf")
+    best_raw_score = 0.0
 
     for clip in clips:
         if _is_banned_clip(clip):
             continue
         s = score_clip_keyword(segment_text, clip, show_config, seg_characters, seg_locations)
 
+        raw_s = s
+
         # Dominant episode bonus
         if dominant_episode_key:
             ep_key, _ = parse_clip_identity(clip.get("filename", ""))
             if ep_key == dominant_episode_key:
                 s += 2.0
+                raw_s += 2.0
 
         # Apply cooldown penalty if this clip was recently used
         if clip.get("filename", "") in cooldown_set:
-            s += cooldown_penalty
+            s = (s * 0.01) - 0.001
 
         if s > best_score:
             best_score = s
             best_clip = clip
+            best_raw_score = raw_s
 
-    if best_score >= threshold:
+    if best_raw_score >= threshold:
         return best_clip, best_score
     return None, 0.0
 
@@ -311,6 +316,7 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
 
     best_clip = None
     best_score = -float("inf")
+    best_raw_score = 0.0
 
     if seg_characters is None:
         seg_characters = extract_character_mentions(segment_text, show_config)
@@ -356,15 +362,18 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
             overlap = seg_keywords & ep_keywords
             score += len(overlap) * 1.5
 
+        raw_score = score
+
         # Apply cooldown penalty
         if clip.get("filename", "") in cooldown_set:
-            score += cooldown_penalty
+            score = (score * 0.01) - 0.001
 
         if score > best_score:
             best_score = score
             best_clip = clip
+            best_raw_score = raw_score
 
-    if best_score >= threshold:
+    if best_raw_score >= threshold:
         return best_clip, best_score
     return None, 0.0
 
