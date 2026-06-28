@@ -423,7 +423,11 @@ def run_tts(
         speed = kokoro_cfg.get("speed", 1.0)
         lang = kokoro_cfg.get("lang", "a")
 
-        audio_dir = get_project_path("audio_dir", pipeline_cfg)
+        topic_folder_str = state.get("phase_outputs", {}).get("topic_folder")
+        if topic_folder_str:
+            audio_dir = Path(topic_folder_str)
+        else:
+            audio_dir = get_project_path("audio_dir", pipeline_cfg)
         audio_dir.mkdir(parents=True, exist_ok=True)
         audio_path = audio_dir / (script_path.stem + ".wav")
 
@@ -451,7 +455,11 @@ def run_tts(
         model = piper_cfg.get("model", "en_US-lessac-medium")
         sample_rate = piper_cfg.get("sample_rate", 22050)
 
-        audio_dir = get_project_path("audio_dir", pipeline_cfg)
+        topic_folder_str = state.get("phase_outputs", {}).get("topic_folder")
+        if topic_folder_str:
+            audio_dir = Path(topic_folder_str)
+        else:
+            audio_dir = get_project_path("audio_dir", pipeline_cfg)
         audio_dir.mkdir(parents=True, exist_ok=True)
         audio_path = audio_dir / (script_path.stem + ".wav")
 
@@ -529,7 +537,11 @@ def run_caption(
     caption_data = caption_audio_file(audio_path, model_size, compute_type, language)
 
     # Save caption JSON
-    captions_dir = get_project_path("captions_dir", pipeline_cfg)
+    topic_folder_str = state.get("phase_outputs", {}).get("topic_folder")
+    if topic_folder_str:
+        captions_dir = Path(topic_folder_str)
+    else:
+        captions_dir = get_project_path("captions_dir", pipeline_cfg)
     captions_dir.mkdir(parents=True, exist_ok=True)
     caption_path = captions_dir / (audio_path.stem + ".json")
     save_json(caption_path, caption_data)
@@ -598,7 +610,11 @@ def run_match(
     )
 
     # Save manifest
-    output_dir = get_project_path("output_dir", pipeline_cfg)
+    topic_folder_str = state.get("phase_outputs", {}).get("topic_folder")
+    if topic_folder_str:
+        output_dir = Path(topic_folder_str)
+    else:
+        output_dir = get_project_path("output_dir", pipeline_cfg)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Use a numbered manifest name to avoid collisions
