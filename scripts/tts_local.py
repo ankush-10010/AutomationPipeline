@@ -16,9 +16,12 @@ Usage:
     # Override Piper model
     python scripts/tts_local.py --input scripts_text/ --model en_US-amy-medium
 
-Requirements:
+Requirements for Piper:
     pip install piper-tts
     (or install Piper standalone: https://github.com/rhasspy/piper)
+
+Requirements for Kokoro:
+    pip install soundfile kokoro-onnx
 """
 
 import argparse
@@ -133,13 +136,94 @@ def synthesize_file(
 
 
 # ---------------------------------------------------------------------------
+# Kokoro TTS
+# ---------------------------------------------------------------------------
+def synthesize_file_kokoro(
+    text_path: Path,
+    output_path: Path,
+    model_path: str,
+    voices_path: str,
+    voice: str,
+    speed: float,
+    lang: str,
+) -> bool:
+    """
+    Synthesize a single text file to .wav using Kokoro standalone engine.
+    """
+    text = text_path.read_text(encoding="utf-8").strip()
+    if not text:
+        log.warning("Skipping empty file: %s", text_path.name)
+        return False
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import soundfile as sf
+        from kokoro_onnx import Kokoro
+    except ImportError:
+        log.error("kokoro-onnx is not installed. Run: pip install soundfile kokoro-onnx")
+        return False
+
+    # Check if model files exist, if not we'll download them automatically
+    import urllib.request
+    import os
+
+    if not os.path.exists(model_path):
+        log.info(f"Downloading Kokoro model to {model_path}...")
+        try:
+            urllib.request.urlretrieve("https://github.com/thewh1teagle/kokoro-onnx/releases/download/model/kokoro-v0_19.onnx", model_path)
+            log.info("Download complete.")
+        except Exception as e:
+            log.error(f"Failed to download model: {e}")
+            return False
+
+    if not os.path.exists(voices_path):
+        log.info(f"Downloading Kokoro voices to {voices_path}...")
+        try:
+            urllib.request.urlretrieve("https://github.com/thewh1teagle/kokoro-onnx/releases/download/model/voices.json", voices_path)
+            log.info("Download complete.")
+        except Exception as e:
+            log.error(f"Failed to download voices: {e}")
+            return False
+
+    log.info("Synthesizing (Kokoro): %s → %s", text_path.name, output_path.name)
+
+    try:
+        # Initialize the standalone engine
+        kokoro = Kokoro(model_path, voices_path)
+        
+        # Generate the audio
+        samples, sample_rate = kokoro.create(
+            text,
+            voice=voice,
+            speed=speed,
+            lang=lang
+        )
+
+        # Save the output
+        sf.write(str(output_path), samples, sample_rate)
+
+        if output_path.exists() and output_path.stat().st_size > 0:
+            size_kb = output_path.stat().st_size / 1024
+            log.info("  ✓ Generated %s (%.1f KB)", output_path.name, size_kb)
+            return True
+        else:
+            log.error("  ✗ Output file missing or empty: %s", output_path)
+            return False
+
+    except Exception as e:
+        log.error("Kokoro synthesis failed for %s: %s", text_path.name, e)
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Batch processing
 # ---------------------------------------------------------------------------
 def process_input(
     input_path: Path,
     output_dir: Path,
-    piper_model: str,
-    sample_rate: int,
+    tts_engine: str,
+    tts_params: dict,
 ) -> dict:
     """
     Process a single file or a directory of .txt files.
@@ -165,7 +249,24 @@ def process_input(
         wav_name = text_file.stem + ".wav"
         output_path = output_dir / wav_name
 
-        ok = synthesize_file(text_file, output_path, piper_model, sample_rate)
+        if tts_engine == "kokoro":
+            ok = synthesize_file_kokoro(
+                text_file,
+                output_path,
+                model_path=tts_params.get("model", "kokoro-v0_19.onnx"),
+                voices_path=tts_params.get("voices", "voices.json"),
+                voice=tts_params.get("voice", "af_bella"),
+                speed=tts_params.get("speed", 1.0),
+                lang=tts_params.get("lang", "en-us"),
+            )
+        else: # default to piper
+            ok = synthesize_file(
+                text_file,
+                output_path,
+                tts_params.get("piper_model", "en_US-lessac-medium"),
+                tts_params.get("sample_rate", 22050)
+            )
+
         if ok:
             results["success"] += 1
             results["files"].append(str(output_path))
@@ -196,7 +297,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir", "-o",
         default=None,
-        help="Output directory for .wav files (default: from pipeline_config.yaml → audio/)",
+        help="Output directory for .wav files (default: from pipeline_config.yaml -> audio/)",
     )
     parser.add_argument(
         "--model", "-m",
@@ -218,10 +319,7 @@ def main():
     # --- Load config -------------------------------------------------------
     config = load_pipeline_config()
     tts_cfg = config.get("tts", {})
-    piper_cfg = tts_cfg.get("piper", {})
-
-    piper_model = args.model or piper_cfg.get("model", "en_US-lessac-medium")
-    sample_rate = args.sample_rate or piper_cfg.get("sample_rate", 22050)
+    engine = tts_cfg.get("engine", "piper")
 
     if args.output_dir:
         output_dir = Path(args.output_dir).resolve()
@@ -229,33 +327,45 @@ def main():
         output_dir = get_project_path("audio_dir")
 
     input_path = Path(args.input).resolve()
+    
+    tts_params = {}
+    if engine == "kokoro":
+        kokoro_cfg = tts_cfg.get("kokoro", {})
+        tts_params["model"] = kokoro_cfg.get("model", "kokoro-v0_19.onnx")
+        tts_params["voices"] = kokoro_cfg.get("voices", "voices.json")
+        tts_params["voice"] = kokoro_cfg.get("voice", "af_bella")
+        tts_params["speed"] = kokoro_cfg.get("speed", 1.0)
+        tts_params["lang"] = kokoro_cfg.get("lang", "en-us")
+    else:
+        piper_cfg = tts_cfg.get("piper", {})
+        tts_params["piper_model"] = args.model or piper_cfg.get("model", "en_US-lessac-medium")
+        tts_params["sample_rate"] = args.sample_rate or piper_cfg.get("sample_rate", 22050)
 
-    # --- Check Piper availability ------------------------------------------
-    if not check_piper_installed():
-        log.error(
-            "Piper TTS is not installed or not found on PATH.\n\n"
-            "Install options:\n"
-            "  1. pip install piper-tts\n"
-            "  2. Download from https://github.com/rhasspy/piper/releases\n\n"
-            "This script is for LOCAL DEVELOPMENT TESTING ONLY.\n"
-            "For production-quality TTS, use notebooks/kaggle_gpu_batch.py "
-            "with XTTS-v2 on a Kaggle GPU runtime."
-        )
-        sys.exit(1)
+        # --- Check Piper availability ------------------------------------------
+        if not check_piper_installed():
+            log.error(
+                "Piper TTS is not installed or not found on PATH.\n\n"
+                "Install options:\n"
+                "  1. pip install piper-tts\n"
+                "  2. Download from https://github.com/rhasspy/piper/releases\n\n"
+                "This script is for LOCAL DEVELOPMENT TESTING ONLY.\n"
+                "For production-quality TTS, use notebooks/kaggle_gpu_batch.py "
+                "with XTTS-v2 on a Kaggle GPU runtime."
+            )
+            sys.exit(1)
 
     # --- Run synthesis -----------------------------------------------------
     log.info("=" * 60)
-    log.info("Piper TTS — Local Development")
+    log.info("TTS — Local Development")
     log.info("=" * 60)
-    log.info("Model:      %s", piper_model)
-    log.info("Sample rate: %d Hz", sample_rate)
+    log.info("Engine:     %s", engine)
     log.info("Input:      %s", input_path)
     log.info("Output dir: %s", output_dir)
     log.info("-" * 60)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    results = process_input(input_path, output_dir, piper_model, sample_rate)
+    results = process_input(input_path, output_dir, engine, tts_params)
 
     # --- Summary -----------------------------------------------------------
     log.info("-" * 60)
