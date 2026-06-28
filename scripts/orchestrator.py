@@ -328,18 +328,16 @@ def run_tts(
         from tts_local import synthesize_file_kokoro
 
         kokoro_cfg = tts_cfg.get("kokoro", {})
-        model_path = kokoro_cfg.get("model", "kokoro-v0_19.onnx")
-        voices_path = kokoro_cfg.get("voices", "voices.json")
         voice = kokoro_cfg.get("voice", "af_bella")
         speed = kokoro_cfg.get("speed", 1.0)
-        lang = kokoro_cfg.get("lang", "en-us")
+        lang = kokoro_cfg.get("lang", "a")
 
         audio_dir = get_project_path("audio_dir", pipeline_cfg)
         audio_dir.mkdir(parents=True, exist_ok=True)
         audio_path = audio_dir / (script_path.stem + ".wav")
 
         ok = synthesize_file_kokoro(
-            script_path, audio_path, model_path, voices_path, voice, speed, lang
+            script_path, audio_path, voice, speed, lang
         )
         if not ok:
             log.error("Kokoro TTS synthesis failed for: %s", script_path)

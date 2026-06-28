@@ -35,11 +35,9 @@ llm:
 tts:
   engine: "kokoro"                           # "kokoro" for standalone CPU fast TTS, "piper" for local dev, "xtts" or "fish_speech" for Kaggle
   kokoro:
-    model: "kokoro-v0_19.onnx"               # standalone engine model
-    voices: "voices.json"                    # Voice metadata
     voice: "af_bella"                        # Default voice
     speed: 1.0
-    lang: "en-us"
+    lang: "a"                                # 'a' for American English
   piper:
     model: "en_US-lessac-medium"             # Good default Piper voice
     output_format: "wav"
