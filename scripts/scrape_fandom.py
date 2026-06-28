@@ -31,7 +31,7 @@ def search_fandom(query: str, limit: int = 20) -> list:
     }
     log.info(f"Searching API for: {query}")
     try:
-        resp = requests.get(API_URL, params=params, headers=HEADERS)
+        resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         return [item['title'] for item in data.get('query', {}).get('search', [])]
@@ -57,7 +57,7 @@ def get_all_pages(limit: str = "max") -> list:
             params["apcontinue"] = apcontinue
             
         try:
-            resp = requests.get(API_URL, params=params, headers=HEADERS)
+            resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             
@@ -95,7 +95,7 @@ def get_category_members(category: str, limit: str = "max") -> list:
             params["cmcontinue"] = cmcontinue
             
         try:
-            resp = requests.get(API_URL, params=params, headers=HEADERS)
+            resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             
@@ -126,7 +126,7 @@ def get_page_content(title: str) -> str:
         "disabletoc": 1
     }
     try:
-        resp = requests.get(API_URL, params=params, headers=HEADERS)
+        resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         
@@ -230,7 +230,9 @@ def scrape_all_fandom_data(config: dict, custom_url: str = None, core_pages: lis
         character_pages = get_category_members("Category:Characters", limit="max")
         titles.update(character_pages)
     
-    log.info(f"Found {len(titles)} unique pages to scan. This might take a few minutes!")
+    # Sort titles alphabetically so the order is 100% deterministic for resuming
+    sorted_titles = sorted(list(titles))
+    log.info(f"Found {len(sorted_titles)} unique pages to scan. This might take a few minutes!")
     
     # Load existing state to allow resuming!
     existing_theories = {}
@@ -255,17 +257,17 @@ def scrape_all_fandom_data(config: dict, custom_url: str = None, core_pages: lis
     theories_path.parent.mkdir(parents=True, exist_ok=True)
     wiki_path.parent.mkdir(parents=True, exist_ok=True)
     
-    for idx, title in enumerate(titles, 1):
+    for idx, title in enumerate(sorted_titles, 1):
         if title in existing_wiki:
-            log.info(f"--- Skipping {idx}/{len(titles)}: {title} (Already scraped) ---")
+            log.info(f"--- Skipping {idx}/{len(sorted_titles)}: {title} (Already scraped) ---")
             continue
             
-        log.info(f"--- Processing {idx}/{len(titles)}: {title} ---")
+        log.info(f"--- Processing {idx}/{len(sorted_titles)}: {title} ---")
         html = get_page_content(title)
         intro_text, extracted_theories = extract_info_from_html(title, html)
         
-        if intro_text:
-            existing_wiki[title] = intro_text
+        # Save even if empty, so we remember that we already checked this page!
+        existing_wiki[title] = intro_text if intro_text else ""
             
         if extracted_theories:
             existing_theories.update(extracted_theories)
