@@ -26,7 +26,7 @@ paths:
 
 # -- LLM (Language Model) -----------------------------------------------------
 llm:
-  engine: "gemini"                           # "ollama" or "gemini"
+  engine: "ollama"                           # "ollama" or "gemini"
   ollama:
     model: "llama3.1:8b"                       # or "qwen2.5:7b", "mistral"
     base_url: "http://localhost:11434"          # Ollama default

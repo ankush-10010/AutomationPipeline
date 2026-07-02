@@ -259,9 +259,7 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
     if cooldown_set is None:
         cooldown_set = set()
 
-    best_clip = None
-    best_score = -float("inf")
-    best_raw_score = 0.0
+    scored_clips = []
 
     for clip in clips:
         if _is_banned_clip(clip):
@@ -283,14 +281,14 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
                 continue
             s = (s * 0.01) - 0.001
 
-        if s > best_score:
-            best_score = s
-            best_clip = clip
-            best_raw_score = raw_s
+        scored_clips.append((s, raw_s, clip))
 
-    if best_raw_score >= threshold:
-        return best_clip, best_score
-    return None, 0.0
+    scored_clips.sort(key=lambda x: x[0], reverse=True)
+
+    if scored_clips and scored_clips[0][1] >= threshold:
+        top_clips = [c for s, r, c in scored_clips if r >= threshold]
+        return top_clips[:10], scored_clips[0][0]
+    return [], 0.0
 
 
 # ============================================================================
@@ -318,9 +316,7 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
     if cooldown_set is None:
         cooldown_set = set()
 
-    best_clip = None
-    best_score = -float("inf")
-    best_raw_score = 0.0
+    scored_clips = []
 
     if seg_characters is None:
         seg_characters = extract_character_mentions(segment_text, show_config)
@@ -374,14 +370,14 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
                 continue
             score = (score * 0.01) - 0.001
 
-        if score > best_score:
-            best_score = score
-            best_clip = clip
-            best_raw_score = raw_score
+        scored_clips.append((score, raw_score, clip))
 
-    if best_raw_score >= threshold:
-        return best_clip, best_score
-    return None, 0.0
+    scored_clips.sort(key=lambda x: x[0], reverse=True)
+
+    if scored_clips and scored_clips[0][1] >= threshold:
+        top_clips = [c for s, r, c in scored_clips if r >= threshold]
+        return top_clips[:10], scored_clips[0][0]
+    return [], 0.0
 
 
 # ============================================================================
@@ -394,10 +390,10 @@ def match_llm(segment_text: str, clips: list, llm_config: dict) -> tuple:
     Sends a prompt with the segment text and a numbered list of clip
     descriptions, asks the LLM to pick the best match by number.
 
-    Returns (best_clip, confidence) or (None, 0) on failure.
+    Returns (top_clips, confidence) or ([], 0) on failure.
     """
     if not clips:
-        return None, 0.0
+        return [], 0.0
 
     # Build clip descriptions for the prompt (limit to top 20 for context)
     clip_descs = []
@@ -446,12 +442,14 @@ def match_llm(segment_text: str, clips: list, llm_config: dict) -> tuple:
         # Parse the number from the response
         match = re.search(r"\b(\d+)\b", answer)
         if match:
-            idx = int(match.group(1))
-            if 1 <= idx <= len(clip_descs):
-                return clips[idx - 1], 10.0  # High confidence for LLM pick
-            elif idx == 0:
-                return None, 0.0  # LLM said no match
-
+            try:
+                chosen_idx = int(match.group(1))
+                if 1 <= chosen_idx <= len(clip_descs):
+                    # For LLM, we just return the chosen clip as a single-item list
+                    chosen_clip = clips[chosen_idx - 1]
+                    return [chosen_clip], 1.0
+            except ValueError:
+                pass
     except requests.RequestException as e:
         log.warning("LLM request failed, falling back to keyword: %s", e)
     except (ValueError, KeyError) as e:
@@ -565,7 +563,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
         if current_locs:
             active_locations = current_locs
 
-        best_clip = None
+        best_clips = []
         score = 0.0
 
         # --- Matching (with cooldown penalty baked in) ---
@@ -580,7 +578,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                     strategy = "keyword"
 
             if strategy == "semantic":
-                best_clip, score = match_semantic(
+                best_clips, score = match_semantic(
                     seg_text, eligible_clips, show_config,
                     build_manifest.embedding_model, threshold=3.0,
                     cooldown_set=cooldown_set,
@@ -591,9 +589,9 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                 )
 
         if strategy == "llm" and eligible_clips:
-            best_clip, score = match_llm(seg_text, eligible_clips, llm_config)
-            if best_clip is None:
-                best_clip, score = match_keyword(
+            best_clips, score = match_llm(seg_text, eligible_clips, llm_config)
+            if not best_clips:
+                best_clips, score = match_keyword(
                     seg_text, eligible_clips, show_config, threshold,
                     cooldown_set=cooldown_set,
                     cooldown_penalty=cooldown_penalty,
@@ -602,7 +600,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                     seg_locations=active_locations,
                 )
         elif strategy == "keyword" and eligible_clips:
-            best_clip, score = match_keyword(
+            best_clips, score = match_keyword(
                 seg_text, eligible_clips, show_config, threshold,
                 cooldown_set=cooldown_set,
                 cooldown_penalty=cooldown_penalty,
@@ -612,6 +610,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             )
 
         # --- Adjacency fallback & Repetition Prevention ---
+        best_clip = best_clips[0] if best_clips else None
         if (best_clip is not None
                 and best_clip.get("filename", "") in cooldown_set):
             adj_clip = None
@@ -630,12 +629,13 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             
             if adj_clip:
                 best_clip = adj_clip
+                best_clips[0] = adj_clip
             else:
                 # Adjacency failed. We MUST NOT use this clip to prevent repetition.
                 # Re-run the match, absolutely banning cooldown clips.
                 log.info("Segment %d: adjacency failed, banning cooldown clips to prevent repetition.", seg_id)
                 if strategy == "semantic":
-                    best_clip, score = match_semantic(
+                    best_clips, score = match_semantic(
                         seg_text, eligible_clips, show_config, threshold,
                         cooldown_set=cooldown_set,
                         dominant_episode_key=dominant_episode_key,
@@ -644,7 +644,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                         ban_cooldown=True,
                     )
                 else:
-                    best_clip, score = match_keyword(
+                    best_clips, score = match_keyword(
                         seg_text, eligible_clips, show_config, threshold,
                         cooldown_set=cooldown_set,
                         dominant_episode_key=dominant_episode_key,
@@ -652,6 +652,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                         seg_locations=active_locations,
                         ban_cooldown=True,
                     )
+                best_clip = best_clips[0] if best_clips else None
 
         # --- Build manifest entry ---
         entry = {
@@ -666,6 +667,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             clip_filename = best_clip.get("filename", "")
             entry["visual_type"] = "clip"
             entry["visual_source"] = clip_filename
+            entry["visual_sources"] = [c.get("filename", "") for c in best_clips]
             entry["clip_start"] = 0.0
             entry["match_score"] = round(score, 2)
             stats["matched"] += 1

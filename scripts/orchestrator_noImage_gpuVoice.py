@@ -386,6 +386,14 @@ def run_tts(
     log.info("PHASE: tts -- %s", PHASE_DESCRIPTIONS["tts"])
     log.info("=" * 60)
 
+    import requests
+    try:
+        log.info("Unloading Ollama model from VRAM to free memory for TTS...")
+        requests.post("http://localhost:11434/api/generate", json={"model": "llama3.1:8b", "keep_alive": 0}, timeout=5)
+    except Exception as e:
+        log.debug("Failed to unload Ollama: %s", e)
+
+
     if dry_run:
         script_path_str = state.get("phase_outputs", {}).get("script_path", "<pending>")
         log.info("[DRY RUN] Would synthesize TTS for: %s", script_path_str)

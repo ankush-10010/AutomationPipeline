@@ -478,7 +478,7 @@ def assemble_video(manifest: dict, audio_path: str, output_path: str,
 
     try:
         # -- Step 0: Ensure video length matches audio exactly --
-        audio_dur = _get_video_duration(audio_path)
+        audio_dur = get_media_duration(audio_path)
         if audio_dur > 0 and segments:
             last_seg = segments[-1]
             if last_seg.get("end", 0) < audio_dur:
@@ -500,18 +500,59 @@ def assemble_video(manifest: dict, audio_path: str, output_path: str,
             clip_start = seg.get("clip_start", 0.0)
             seg_output = str(tmp_dir / f"seg_{seg_id:04d}.mp4")
 
-            if visual_type == "clip" and visual_source:
-                # Resolve clip path
-                clip_file = _resolve_visual_path(visual_source, clips_dir)
-                if clip_file and Path(clip_file).exists():
+            if visual_type == "clip" and (visual_source or seg.get("visual_sources")):
+                visual_sources = seg.get("visual_sources", [])
+                if not visual_sources and visual_source:
+                    visual_sources = [visual_source]
+
+                accumulated_dur = 0.0
+                chunks = []
+                for idx, src in enumerate(visual_sources):
+                    clip_file = _resolve_visual_path(src, clips_dir)
+                    if not clip_file or not Path(clip_file).exists():
+                        continue
+                    
+                    c_dur = get_media_duration(clip_file)
+                    if c_dur <= 0:
+                        continue
+                    
+                    remaining = duration - accumulated_dur
+                    if remaining <= 0:
+                        break
+                        
+                    chunk_dur = min(c_dur, remaining)
+                    # Loop the last available clip if we still need more time
+                    if idx == len(visual_sources) - 1 and chunk_dur < remaining:
+                        chunk_dur = remaining
+                        
+                    chunk_out = str(tmp_dir / f"seg_{seg_id:04d}_part{idx}.mp4")
                     prepare_clip_segment(
-                        clip_file, duration, clip_start,
-                        width, height, seg_output, fps,
+                        clip_file, chunk_dur, clip_start if idx == 0 else 0.0,
+                        width, height, chunk_out, fps
                     )
+                    chunks.append(chunk_out)
+                    accumulated_dur += chunk_dur
+                    
+                    if accumulated_dur >= duration - 0.05:
+                        break
+                        
+                if chunks:
+                    if len(chunks) == 1:
+                        import shutil
+                        shutil.move(chunks[0], seg_output)
+                    else:
+                        concat_file = tmp_dir / f"concat_{seg_id:04d}.txt"
+                        with open(concat_file, "w") as f:
+                            for chunk in chunks:
+                                f.write(f"file '{Path(chunk).absolute()}'\n")
+                        args = [
+                            "-y", "-f", "concat", "-safe", "0",
+                            "-i", str(concat_file),
+                            "-c", "copy", seg_output
+                        ]
+                        run_ffmpeg(args, f"concat chunks for seg {seg_id}")
                 else:
-                    log.warning(
-                        "Clip not found: %s — using black", visual_source
-                    )
+                    log.warning("Clips not found or invalid for seg %d — using black", seg_id)
                     prepare_black_segment(duration, width, height, seg_output, fps)
 
             elif visual_type == "ai_image":

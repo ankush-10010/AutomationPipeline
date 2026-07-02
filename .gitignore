@@ -14,3 +14,16 @@ __pycache__/
 !topics/theories.json
 !topics/wiki.json
 # !rick_and_morty_subtitles/
+
+# Ignore secrets and generated output directories
+.env
+topics/approved/
+output/
+audio/
+clips/
+Videos/
+research_cache/
+graphify-out/
+yolo_wt/
+rick_and_morty_subtitles/
+.vscode/
