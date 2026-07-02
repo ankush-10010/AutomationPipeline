@@ -7,7 +7,7 @@
 shows:
   ben10:
     display_name: "Ben 10"
-    active: true
+    active: false
 
     # # -- Characters (used for clip matching + script prompts) --
     # characters:

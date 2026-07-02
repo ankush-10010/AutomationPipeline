@@ -264,9 +264,43 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
     for clip in clips:
         if _is_banned_clip(clip):
             continue
-        s = score_clip_keyword(segment_text, clip, show_config, seg_characters, seg_locations)
+            
+        reason_parts = []
+        # Score calculation with reasons
+        clip_characters = {c.lower() for c in clip.get("characters", [])}
+        clip_location = clip.get("location", "").lower()
+        clip_action = _normalize(clip.get("action", ""))
+        clip_tags = {t.lower() for t in clip.get("tags", [])}
+        
+        s = 0.0
+        
+        char_overlap = seg_characters & clip_characters
+        if char_overlap:
+            s += len(char_overlap) * 3.0
+            reason_parts.append(f"Chars: {', '.join(char_overlap)}")
+            
+        if clip_location and clip_location in seg_locations:
+            s += 2.0
+            reason_parts.append(f"Loc: {clip_location}")
+            
+        action_words = extract_keywords(clip_action)
+        action_overlap = extract_keywords(segment_text) & action_words
+        if action_overlap:
+            s += len(action_overlap) * 2.0
+            reason_parts.append(f"Action: {', '.join(action_overlap)}")
+            
+        tag_overlap = extract_keywords(segment_text) & clip_tags
+        if tag_overlap:
+            s += len(tag_overlap) * 1.0
+            reason_parts.append(f"Tags: {', '.join(tag_overlap)}")
+            
+        # We don't have access to seg_themes here, so we skip it or recreate it
+        # Original logic used seg_themes. Let's just use empty string for reason if none of above
+        if not reason_parts:
+            reason_parts.append("Weak Keyword Match")
 
         raw_s = s
+        reason = " | ".join(reason_parts)
 
         # Dominant episode bonus
         if dominant_episode_key:
@@ -274,21 +308,30 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
             if ep_key == dominant_episode_key:
                 s += 2.0
                 raw_s += 2.0
+                reason += " | Dominant Ep"
 
         # Apply cooldown penalty if this clip was recently used
         if clip.get("filename", "") in cooldown_set:
             if ban_cooldown:
                 continue
             s = (s * 0.01) - 0.001
+            reason += " [COOLDOWN PENALTY]"
 
-        scored_clips.append((s, raw_s, clip))
+        scored_clips.append((s, raw_s, clip, reason))
 
     scored_clips.sort(key=lambda x: x[0], reverse=True)
 
     if scored_clips and scored_clips[0][1] >= threshold:
-        top_clips = [c for s, r, c in scored_clips if r >= threshold]
-        return top_clips[:10], scored_clips[0][0]
-    return [], 0.0
+        top_clips = []
+        for s, r, c, reason in scored_clips:
+            if r >= threshold:
+                if c.get("filename", "") in cooldown_set and not ban_cooldown and len(top_clips) > 0:
+                    continue # Skip cooldown clips for stitching unless it's the #1 best
+                top_clips.append((c, reason))
+                
+        clips_only = [c for c, r in top_clips]
+        return clips_only[:10], scored_clips[0][0], top_clips[0][1]
+    return [], 0.0, ""
 
 
 # ============================================================================
@@ -334,6 +377,8 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
 
         sim = cosine_similarity(segment_embedding, clip_emb)
         score = sim * 10.0
+        
+        reason_parts = [f"Vector Sim: {sim:.2f}"]
 
         # Character matching precision boost
         clip_characters = {c.lower() for c in clip.get("characters", [])}
@@ -341,19 +386,23 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
         if seg_characters:
             if char_overlap:
                 score += len(char_overlap) * 7.0
+                reason_parts.append(f"Chars: {', '.join(char_overlap)}")
             else:
                 score -= 4.0
+                reason_parts.append("Missing Chars")
 
         # Location match bonus
         clip_location = clip.get("location", "").lower()
         if clip_location and clip_location in seg_locations:
             score += 2.0
+            reason_parts.append(f"Loc: {clip_location}")
             
         # Dominant episode bonus
         if dominant_episode_key:
             ep_key, _ = parse_clip_identity(clip.get("filename", ""))
             if ep_key == dominant_episode_key:
                 score += 2.0
+                reason_parts.append("Dominant Ep")
 
         # Enriched episode summary RAG overlap bonus
         ep_summary = clip.get("episode_summary", "").lower()
@@ -361,23 +410,35 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
             ep_keywords = extract_keywords(ep_summary)
             overlap = seg_keywords & ep_keywords
             score += len(overlap) * 1.5
+            if overlap:
+                reason_parts.append(f"Plot Overlap: {len(overlap)}")
 
         raw_score = score
+        reason = " | ".join(reason_parts)
 
         # Apply cooldown penalty
         if clip.get("filename", "") in cooldown_set:
             if ban_cooldown:
                 continue
             score = (score * 0.01) - 0.001
+            reason += " [COOLDOWN PENALTY]"
 
-        scored_clips.append((score, raw_score, clip))
+        scored_clips.append((score, raw_score, clip, reason))
 
     scored_clips.sort(key=lambda x: x[0], reverse=True)
 
     if scored_clips and scored_clips[0][1] >= threshold:
-        top_clips = [c for s, r, c in scored_clips if r >= threshold]
-        return top_clips[:10], scored_clips[0][0]
-    return [], 0.0
+        # Filter out cooldown clips from the top pool unless they are the absolute only option
+        top_clips = []
+        for s, r, c, reason in scored_clips:
+            if r >= threshold:
+                if c.get("filename", "") in cooldown_set and not ban_cooldown and len(top_clips) > 0:
+                    continue # Skip cooldown clips for stitching unless it's the #1 best
+                top_clips.append((c, reason))
+        
+        clips_only = [c for c, r in top_clips]
+        return clips_only[:10], scored_clips[0][0], top_clips[0][1]
+    return [], 0.0, ""
 
 
 # ============================================================================
@@ -565,6 +626,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
 
         best_clips = []
         score = 0.0
+        reason = ""
 
         # --- Matching (with cooldown penalty baked in) ---
         if strategy == "semantic" and eligible_clips:
@@ -578,7 +640,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                     strategy = "keyword"
 
             if strategy == "semantic":
-                best_clips, score = match_semantic(
+                best_clips, score, reason = match_semantic(
                     seg_text, eligible_clips, show_config,
                     build_manifest.embedding_model, threshold=3.0,
                     cooldown_set=cooldown_set,
@@ -590,8 +652,9 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
 
         if strategy == "llm" and eligible_clips:
             best_clips, score = match_llm(seg_text, eligible_clips, llm_config)
+            reason = "LLM Pick"
             if not best_clips:
-                best_clips, score = match_keyword(
+                best_clips, score, reason = match_keyword(
                     seg_text, eligible_clips, show_config, threshold,
                     cooldown_set=cooldown_set,
                     cooldown_penalty=cooldown_penalty,
@@ -600,7 +663,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                     seg_locations=active_locations,
                 )
         elif strategy == "keyword" and eligible_clips:
-            best_clips, score = match_keyword(
+            best_clips, score, reason = match_keyword(
                 seg_text, eligible_clips, show_config, threshold,
                 cooldown_set=cooldown_set,
                 cooldown_penalty=cooldown_penalty,
@@ -626,6 +689,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                         adj_clip.get("filename", "?"), dist,
                     )
                     stats["adjacent_used"] += 1
+                    reason = f"Adjacent to Cooldown Clip ({dist} scenes)"
             
             if adj_clip:
                 best_clip = adj_clip
@@ -635,8 +699,9 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                 # Re-run the match, absolutely banning cooldown clips.
                 log.info("Segment %d: adjacency failed, banning cooldown clips to prevent repetition.", seg_id)
                 if strategy == "semantic":
-                    best_clips, score = match_semantic(
-                        seg_text, eligible_clips, show_config, threshold,
+                    best_clips, score, reason = match_semantic(
+                        seg_text, eligible_clips, show_config,
+                        build_manifest.embedding_model, threshold=3.0,
                         cooldown_set=cooldown_set,
                         dominant_episode_key=dominant_episode_key,
                         seg_characters=active_characters,
@@ -644,7 +709,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                         ban_cooldown=True,
                     )
                 else:
-                    best_clips, score = match_keyword(
+                    best_clips, score, reason = match_keyword(
                         seg_text, eligible_clips, show_config, threshold,
                         cooldown_set=cooldown_set,
                         dominant_episode_key=dominant_episode_key,
@@ -670,6 +735,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             entry["visual_sources"] = [c.get("filename", "") for c in best_clips]
             entry["clip_start"] = 0.0
             entry["match_score"] = round(score, 2)
+            entry["match_reason"] = reason
             stats["matched"] += 1
 
             # Update active memory based on the chosen clip if it has metadata
@@ -688,6 +754,16 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                 seg_id, clip_filename, score,
                 len(cooldown_set), cooldown_size,
             )
+            log.info("   -> Segment Text: \"%s\"", seg_text)
+            log.info("   -> Match Reason: %s", reason)
+            
+            # Print the DB content that triggered the match
+            db_action = best_clip.get("action", "").strip()
+            db_tags = ", ".join(best_clip.get("tags", []))
+            if db_action:
+                log.info("   -> DB Action Match: \"%s\"", db_action)
+            if db_tags:
+                log.info("   -> DB Tags: %s", db_tags)
         else:
             # Fallback
             if fallback == "ai_image":
@@ -704,6 +780,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
 
             entry["clip_start"] = 0.0
             entry["match_score"] = 0.0
+            entry["match_reason"] = "Fallback"
             stats["fallback"] += 1
             log.info("Segment %d -> fallback (%s)", seg_id, fallback)
 
