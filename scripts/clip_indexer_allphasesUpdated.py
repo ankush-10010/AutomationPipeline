@@ -329,11 +329,11 @@ CLI Execution Examples:
         if not batch_path.exists() or not batch_path.is_dir():
             log_error(f"Batch directory does not exist or is not a directory: {batch_path}")
             sys.exit(1)
-        raw_mp4s = sorted(list(batch_path.rglob("*.mp4")))
+        raw_videos = sorted([p for p in batch_path.rglob("*.*") if p.suffix.lower() in [".mp4", ".mkv"]])
         episodes_to_process = [
-            p for p in raw_mp4s if "_scene_" not in p.name and not p.name.startswith(".")
+            p for p in raw_videos if "_scene_" not in p.name and not p.name.startswith(".")
         ]
-        log_info(f"Discovered {len(episodes_to_process)} episode MP4 files in batch directory.")
+        log_info(f"Discovered {len(episodes_to_process)} episode video files in batch directory.")
 
     if not episodes_to_process:
         log_error("No episode video files found to process.")

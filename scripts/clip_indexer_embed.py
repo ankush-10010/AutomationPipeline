@@ -13,6 +13,7 @@ except ImportError:
 def main():
     parser = argparse.ArgumentParser(description="Generate semantic embeddings for clip_index.json")
     parser.add_argument("--index", default="clip_index.json", help="Path to clip_index.json")
+    parser.add_argument("--force", action="store_true", help="Force recompute embeddings")
     args = parser.parse_args()
 
     index_path = Path(args.index)
@@ -41,6 +42,9 @@ def main():
     
     count = 0
     for clip in clips:
+        if "embedding" in clip and not args.force:
+            continue
+            
         # Create a rich text representation of the clip
         chars = ", ".join(clip.get("characters", []))
         action = clip.get("action", "")

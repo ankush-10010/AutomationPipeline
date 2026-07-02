@@ -33,6 +33,11 @@ def split_episode(video_path: str, output_dir: str, prefix: str, threshold: floa
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = output_dir / f"{prefix}_manifest.json"
+    
+    if manifest_path.exists():
+        log.info(f"Manifest already exists at {manifest_path}, skipping scene splitting.")
+        return
     
     log.info(f"Analyzing {video_path.name} for scene changes...")
     log.info(f"This may take a few minutes depending on the video length.")
