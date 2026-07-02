@@ -252,6 +252,10 @@ def build_caption_drawtext(segments: list, caption_cfg: dict,
     Returns the full drawtext filter string for the FFmpeg filter_complex.
     """
     font = caption_cfg.get("font", "Arial")
+    # Make font path absolute to avoid ffmpeg cwd issues
+    if "/" in font or font.endswith(".ttf"):
+        import os
+        font = os.path.abspath(font)
     font_size = caption_cfg.get("font_size", 64)
     font_color = caption_cfg.get("font_color", "white")
     highlight_color = caption_cfg.get("highlight_color", "#FFD700")
@@ -274,8 +278,7 @@ def build_caption_drawtext(segments: list, caption_cfg: dict,
             end = seg.get("end", 0)
             f = (
                 f"drawtext=text='{text}':"
-                f"fontfile='':"
-                f"font='{font}':"
+                f"fontfile='{font}':"
                 f"fontsize={font_size}:"
                 f"fontcolor={font_color}:"
                 f"borderw={outline_width}:"
@@ -308,7 +311,7 @@ def build_caption_drawtext(segments: list, caption_cfg: dict,
             # Base layer: all words in white
             base = (
                 f"drawtext=text='{group_text_escaped}':"
-                f"font='{font}':"
+                f"fontfile='{font}':"
                 f"fontsize={font_size}:"
                 f"fontcolor={font_color}:"
                 f"borderw={outline_width}:"
@@ -344,7 +347,7 @@ def build_caption_drawtext(segments: list, caption_cfg: dict,
                 # offset by the prefix width
                 highlight = (
                     f"drawtext=text='{word_escaped}':"
-                    f"font='{font}':"
+                    f"fontfile='{font}':"
                     f"fontsize={font_size}:"
                     f"fontcolor={highlight_color}:"
                     f"borderw={outline_width}:"
@@ -366,6 +369,10 @@ def build_simple_caption_drawtext(segments: list, caption_cfg: dict,
     highlighted using enable timing.
     """
     font = caption_cfg.get("font", "Arial")
+    # Make font path absolute to avoid ffmpeg cwd issues
+    if "/" in font or font.endswith(".ttf"):
+        import os
+        font = os.path.abspath(font)
     font_size = caption_cfg.get("font_size", 64)
     font_color = caption_cfg.get("font_color", "white")
     highlight_color = caption_cfg.get("highlight_color", "#FFD700")
@@ -401,7 +408,7 @@ def build_simple_caption_drawtext(segments: list, caption_cfg: dict,
 
             f = (
                 f"drawtext=text='{text_esc}':"
-                f"font='{font}':"
+                f"fontfile='{font}':"
                 f"fontsize={font_size}:"
                 f"fontcolor={font_color}:"
                 f"borderw={outline_width}:"
@@ -427,7 +434,7 @@ def build_simple_caption_drawtext(segments: list, caption_cfg: dict,
             # Draw the full word group in the default color
             base_f = (
                 f"drawtext=text='{group_esc}':"
-                f"font='{font}':"
+                f"fontfile='{font}':"
                 f"fontsize={font_size}:"
                 f"fontcolor={font_color}:"
                 f"borderw={outline_width}:"

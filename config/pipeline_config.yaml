@@ -43,7 +43,7 @@ llm:
 tts:
   engine: "kokoro"                           # "kokoro" for standalone CPU fast TTS, "piper" for local dev, "xtts" or "fish_speech" for Kaggle
   kokoro:
-    voice: "af_bella"                        # Default voice
+    voice: "am_michael"                      # American Male
     speed: 1.0
     lang: "a"                                # 'a' for American English
   piper:
