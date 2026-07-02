@@ -480,6 +480,14 @@ def assemble_video(manifest: dict, audio_path: str, output_path: str,
         # -- Step 0: Ensure video length matches audio exactly --
         audio_dur = get_media_duration(audio_path)
         if audio_dur > 0 and segments:
+            # 0a. Make segments perfectly contiguous to prevent missing gaps (silence/breaths)
+            if segments[0].get("start", 0) > 0:
+                segments[0]["start"] = 0.0
+                
+            for i in range(len(segments) - 1):
+                segments[i]["end"] = segments[i+1]["start"]
+                
+            # 0b. Extend the final segment to match the physical audio duration
             last_seg = segments[-1]
             if last_seg.get("end", 0) < audio_dur:
                 log.info("Extending last segment to match audio duration (%.2fs -> %.2fs)", 

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 except ImportError:
     DDGS = None
 
@@ -279,8 +279,8 @@ class WebResearcher:
         """
         if DDGS is None:
             log.warning(
-                "duckduckgo_search is not installed — "
-                "pip install duckduckgo-search to enable web research"
+                "ddgs is not installed — "
+                "pip install ddgs to enable web research"
             )
             return []
 

@@ -158,12 +158,35 @@ class RAGManager:
         return ""
 
     def _generate_hyde(self, topic: str) -> str:
-        """HyDE: Generates a hypothetical show monologue answering the topic."""
+        """HyDE: Generates a hypothetical show monologue answering the topic.
+        
+        Dynamically uses the active show's characters and display name
+        so the hypothetical document is grounded in the correct universe.
+        """
+        # Pull active show info for a grounded HyDE prompt
+        show_name = "Rick and Morty"  # fallback
+        character_names = "Rick Sanchez, Morty Smith"  # fallback
+        try:
+            from config_loader import load_show_config, get_active_show
+            show_cfg = load_show_config()
+            show_slug, show_data = get_active_show(show_cfg)
+            show_name = show_data.get("display_name", show_name)
+            chars = show_data.get("characters", [])
+            if chars:
+                top_chars = [c["name"] for c in chars[:5]]
+                character_names = ", ".join(top_chars)
+        except Exception:
+            pass
+
         prompt = (
-            f"Write a short 2-sentence dramatic monologue spoken by Rick Sanchez or the narrator "
-            f"answering or explaining this topic: '{topic}'. Do not write commentary, write only the monologue."
+            f"You are an expert analyst of the TV show '{show_name}'. "
+            f"The main characters are: {character_names}.\n\n"
+            f"Write a detailed 3-sentence dramatic monologue that a narrator would speak "
+            f"answering or explaining this topic: '{topic}'.\n"
+            f"Include specific references to episodes, scenes, character motivations, "
+            f"and plot events. Do not write commentary — write ONLY the monologue itself."
         )
-        return self._call_ollama(prompt, temp=0.5, timeout=8)
+        return self._call_ollama(prompt, temp=0.5, timeout=12)
 
     def _distill(self, topic: str, raw_context: str) -> str:
         """Context Distillation: Filters raw vector hits into 4 undeniable canonical bullets."""

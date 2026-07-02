@@ -135,7 +135,7 @@ publishing:
 
 # -- Clip Matching -----------------------------------------------------------
 clip_matching:
-  strategy: "keyword"                        # "keyword" (fast) or "llm" (better but slower)
+  strategy: "semantic"                        # "keyword" (fast) or "llm" (better but slower) or "semantic" (best for story content)
   keyword_match_threshold: 1                 # Minimum keyword matches to count
   cooldown_window: 10
   cooldown_penalty: -50.0
