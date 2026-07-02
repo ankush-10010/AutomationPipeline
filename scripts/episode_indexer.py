@@ -345,15 +345,24 @@ class EpisodeIndexer:
         prompt = self._build_extraction_prompt(
             dialogue, season, episode, self.show_name, filename_title
         )
-        raw_response = self._call_ollama(prompt)
-        if not raw_response:
-            log.error("Empty response from Ollama for %s", episode_key)
-            return None
+        
+        max_retries = 3
+        parsed = None
+        
+        for attempt in range(1, max_retries + 1):
+            raw_response = self._call_ollama(prompt)
+            if not raw_response:
+                log.error("Empty response from Ollama for %s (attempt %d)", episode_key, attempt)
+                continue
+                
+            parsed = self._parse_llm_response(raw_response)
+            if parsed:
+                break
+                
+            log.warning("Failed to parse LLM JSON for %s on attempt %d/%d. Retrying...", episode_key, attempt, max_retries)
 
-        # Parse structured response
-        parsed = self._parse_llm_response(raw_response)
-        if parsed is None:
-            log.error("Failed to parse LLM response for %s", episode_key)
+        if not parsed:
+            log.error("Failed to parse LLM response for %s after %d attempts", episode_key, max_retries)
             return None
 
         # Add metadata
