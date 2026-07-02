@@ -20,7 +20,7 @@ paths:
   vector_db_dir: "./vector_db"
   theories_db: "./topics/theories.json"
   wiki_db: "./topics/wiki.json"
-  episode_index: "./episode_index.json"
+  episode_index: "./topics/episode_index.json"
   research_cache_dir: "./research_cache"
 
 

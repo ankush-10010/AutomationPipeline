@@ -64,8 +64,7 @@ class RAGManager:
 
         self.ollama_url = pipeline_config.get("ollama", {}).get("base_url", "http://localhost:11434")
         self.ollama_model = (
-            pipeline_config.get("models", {}).get("ollama", {}).get("text")
-            or pipeline_config.get("models", {}).get("script_gen")
+            pipeline_config.get("llm", {}).get("ollama", {}).get("model")
             or "llama3.1:8b"
         )
 
@@ -108,32 +107,52 @@ class RAGManager:
             self.col_subtitles.upsert(documents=chunks, metadatas=metas, ids=ids)
 
     def ingest_json_database(self, collection, filepath: Path, doc_type: str):
-        """Vectorizes key-value lore dictionaries (Wiki, Theories, Episodes)."""
+        """Vectorizes key-value lore dictionaries or lists of JSON objects."""
         if not filepath.exists():
             return
         data = load_json(filepath)
-        if not isinstance(data, dict) or not data:
+        if not data:
+            return
+
+        # Support both {"Key": {...}} and [{"title": "...", ...}] formats
+        if isinstance(data, list):
+            items = []
+            for item in data:
+                if isinstance(item, dict):
+                    key = item.get("title", "Unknown Topic")
+                    items.append((key, item))
+        elif isinstance(data, dict):
+            items = data.items()
+        else:
             return
 
         docs = []
         ids = []
         metas = []
-        for i, (key, val) in enumerate(data.items()):
+        for i, (key, val) in enumerate(items):
             clean_key = str(key).strip()
             if isinstance(val, dict):
-                text = f"Title: {val.get('title', clean_key)}. Summary: {val.get('summary', val.get('one_line', ''))}"
+                content = val.get('content', val.get('summary', val.get('one_line', '')))
+                text = f"Title: {val.get('title', clean_key)}. Summary: {content}"
             else:
                 text = f"Topic: {clean_key} — {str(val).strip()}"
             
             if len(text) < 10:
                 continue
             docs.append(text)
-            ids.append(f"{doc_type}_{i}_{re.sub(r'[^a-zA-Z0-9]', '', clean_key[:20])}")
+            safe_key = re.sub(r'[^a-zA-Z0-9]', '', clean_key[:20])
+            ids.append(f"{doc_type}_{i}_{safe_key}")
             metas.append({"source": fp_name(filepath), "topic": clean_key[:50]})
 
         if docs:
             log.info("Upserting %d vector entries into Chroma collection [%s]", len(docs), collection.name)
-            collection.upsert(documents=docs, metadatas=metas, ids=ids)
+            batch_size = 5000
+            for i in range(0, len(docs), batch_size):
+                collection.upsert(
+                    documents=docs[i:i+batch_size], 
+                    metadatas=metas[i:i+batch_size], 
+                    ids=ids[i:i+batch_size]
+                )
 
     def ingest_all(self):
         """Runs full RAG vectorization across all 4 databases."""
