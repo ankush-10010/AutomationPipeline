@@ -1,18 +1,23 @@
-# Core pipeline dependencies (local CPU)
+# Core pipeline dependencies
 # Install with: pip install -r requirements.txt
 
 # LLM client (talks to Ollama)
 requests>=2.31.0
 
-# Audio captioning (CPU-optimized Whisper)
+# Subtitle Generation & Downloading (Phase 1)
 faster-whisper>=1.0.0
+subliminal>=2.1.0
+babelfish>=0.6.0
 
-# Video processing
+# Video processing & Scene Splitting
 moviepy>=1.0.3
 scenedetect[opencv]>=0.6.2
 
 # Image processing (thumbnails, overlays)
 Pillow>=10.0.0
+
+# Computer Vision (YOLO)
+ultralytics>=8.0.0
 
 # YouTube API
 google-api-python-client>=2.100.0
@@ -22,7 +27,11 @@ google-auth-httplib2>=0.1.1
 # Config
 pyyaml>=6.0.1
 
-# TTS (local dev only — Piper)
+# TTS Engine (Kokoro & Piper)
+kokoro>=0.3.4
+torch>=2.0.0
+numpy
+soundfile
 piper-tts>=1.2.0
 
 # Utilities
@@ -32,3 +41,4 @@ python-dateutil>=2.8.2
 # RAG & Web Scraping
 chromadb>=0.4.24
 beautifulsoup4>=4.12.3
+duckduckgo-search>=5.0.0

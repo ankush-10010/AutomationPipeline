@@ -16,7 +16,7 @@ paths:
   topics_completed: "./topics/completed"
   clip_index: "./clip_index.json"
   prompts_dir: "./prompts"
-  subtitles_dir: "./rick_and_morty_subtitles/Subtitles_Allinone"
+  subtitles_dir: "./ben10_subtitles"
   vector_db_dir: "./vector_db"
   theories_db: "./topics/theories.json"
   wiki_db: "./topics/wiki.json"

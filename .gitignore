@@ -13,7 +13,8 @@ __pycache__/
 # Allow required data files to be pushed despite the wildcards above
 !topics/theories.json
 !topics/wiki.json
-# !rick_and_morty_subtitles/
+!topics/episode_index.json
+!topics/queue.json
 
 # Ignore secrets and generated output directories
 .env
@@ -21,9 +22,12 @@ topics/approved/
 output/
 audio/
 clips/
+assets/clips/
 Videos/
 research_cache/
 graphify-out/
 yolo_wt/
 rick_and_morty_subtitles/
+ben10_subtitles/
+subliminal_cache.*
 .vscode/
