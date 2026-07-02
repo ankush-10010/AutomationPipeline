@@ -347,6 +347,34 @@ def cosine_similarity(v1, v2):
     return dot_product / (norm1 * norm2)
 
 
+def _get_clip_text_encoder():
+    """Lazily load CLIP text encoder for visual embedding matching."""
+    if not hasattr(_get_clip_text_encoder, "_model"):
+        try:
+            from sentence_transformers import SentenceTransformer
+            log.info("Loading CLIP text encoder for visual matching...")
+            _get_clip_text_encoder._model = SentenceTransformer("clip-ViT-B-32")
+        except ImportError:
+            log.warning("sentence-transformers not available for CLIP matching")
+            _get_clip_text_encoder._model = None
+    return _get_clip_text_encoder._model
+
+
+def _extract_transformation_mentions(text: str, show_config: dict) -> set:
+    """Extract alien transformation names from text using show_config aliases."""
+    text_lower = text.lower()
+    mentions = set()
+    for char in show_config.get("characters", []):
+        if char.get("name", "") != "Ben Tennyson":
+            continue
+        for alias in char.get("aliases", []):
+            clean = alias.strip()
+            if clean.lower() not in ("ben",) and len(clean) > 2:
+                if re.search(rf"\b{re.escape(clean.lower())}\b", text_lower):
+                    mentions.add(clean.lower())
+    return mentions
+
+
 def match_semantic(segment_text: str, clips: list, show_config: dict,
                    embedding_model, threshold: float = 3.0,
                    cooldown_set: set = None,
@@ -366,7 +394,16 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
     if seg_locations is None:
         seg_locations = extract_location_mentions(segment_text, show_config)
     seg_keywords = extract_keywords(segment_text)
+    seg_transforms = _extract_transformation_mentions(segment_text, show_config)
     segment_embedding = embedding_model.encode(segment_text).tolist()
+
+    # CLIP visual matching: encode segment text once if any clip has visual embeddings
+    clip_text_emb = None
+    has_visual = any(c.get("clip_visual_embedding") for c in clips[:50])
+    if has_visual:
+        clip_encoder = _get_clip_text_encoder()
+        if clip_encoder is not None:
+            clip_text_emb = clip_encoder.encode(segment_text).tolist()
 
     for clip in clips:
         if _is_banned_clip(clip):
@@ -380,6 +417,14 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
         
         reason_parts = [f"Vector Sim: {sim:.2f}"]
 
+        # CLIP visual embedding similarity
+        clip_visual_emb = clip.get("clip_visual_embedding")
+        if clip_text_emb is not None and clip_visual_emb:
+            visual_sim = cosine_similarity(clip_text_emb, clip_visual_emb)
+            score += visual_sim * 8.0
+            if visual_sim > 0.2:
+                reason_parts.append(f"Visual: {visual_sim:.2f}")
+
         # Character matching precision boost
         clip_characters = {c.lower() for c in clip.get("characters", [])}
         char_overlap = seg_characters & clip_characters
@@ -390,6 +435,16 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
             else:
                 score -= 4.0
                 reason_parts.append("Missing Chars")
+
+        # Transformation match (alien forms)
+        if seg_transforms:
+            clip_transforms = {t.lower() for t in clip.get("transformations", [])}
+            transform_overlap = seg_transforms & clip_transforms
+            if transform_overlap:
+                score += len(transform_overlap) * 5.0
+                reason_parts.append(f"Alien: {', '.join(transform_overlap)}")
+            elif clip_transforms:
+                score -= 1.0  # Mild penalty for wrong alien form
 
         # Location match bonus
         clip_location = clip.get("location", "").lower()
@@ -412,6 +467,25 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
             score += len(overlap) * 1.5
             if overlap:
                 reason_parts.append(f"Plot Overlap: {len(overlap)}")
+
+        # Scene context / visual description overlap
+        scene_ctx = clip.get("scene_context", "").lower()
+        visual_desc = clip.get("visual_description", "").lower()
+        ctx_text = f"{scene_ctx} {visual_desc}".strip()
+        if ctx_text:
+            ctx_keywords = extract_keywords(ctx_text)
+            ctx_overlap = seg_keywords & ctx_keywords
+            score += len(ctx_overlap) * 1.5
+            if ctx_overlap:
+                reason_parts.append(f"Scene Ctx: {len(ctx_overlap)}")
+
+        # Visual tags overlap (YOLO object detection)
+        visual_tags = {t.lower() for t in clip.get("visual_tags", [])}
+        if visual_tags:
+            vtag_overlap = seg_keywords & visual_tags
+            score += len(vtag_overlap) * 1.0
+            if vtag_overlap:
+                reason_parts.append(f"VisTags: {', '.join(vtag_overlap)}")
 
         raw_score = score
         reason = " | ".join(reason_parts)

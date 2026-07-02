@@ -51,6 +51,20 @@ def build_alias_map(show_config: dict) -> dict:
     return alias_map
 
 
+_SPEAKER_LABEL_RE = re.compile(r">>\s*\w[\w\s]*?:", re.IGNORECASE)
+
+
+def _strip_speaker_labels(text: str) -> str:
+    """Remove SRT speaker labels like '>> kevin:' to prevent false character matches."""
+    return _SPEAKER_LABEL_RE.sub("", text)
+
+
+def _extract_speakers(text: str) -> list:
+    """Parse SRT speaker labels into a list of speaker names."""
+    return [m.strip().lstrip(">").strip().rstrip(":").strip().lower()
+            for m in _SPEAKER_LABEL_RE.findall(text)]
+
+
 def enrich_characters(index_path: Path, show_config: dict):
     if not index_path.exists():
         log.error("Clip index not found: %s", index_path)
@@ -79,8 +93,8 @@ def enrich_characters(index_path: Path, show_config: dict):
         existing = clip.get("characters", [])
         existing_lower = {str(c).lower().strip(): str(c).strip() for c in existing if str(c).strip()}
         
-        # Combined text corpus for this clip
-        action_text = clip.get("action", "")
+        # Combined text corpus for this clip — strip speaker labels first
+        action_text = _strip_speaker_labels(clip.get("action", ""))
         tags_text = " ".join(clip.get("tags", [])) if isinstance(clip.get("tags"), list) else str(clip.get("tags", ""))
         summary_text = clip.get("episode_summary", "")
         corpus = f"{action_text} {tags_text} {summary_text}".lower()
