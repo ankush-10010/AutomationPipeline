@@ -21,7 +21,7 @@ This repository houses a **compound AI engineering system** designed to solve th
 
 ### 🌟 Core Engineering Differentiators
 
-| Dimension | Standard AI Demos | This Pipeline |
+| Dimension | Standard AI Demo | This Pipeline |
 | :--- | :--- | :--- |
 | **Execution Architecture** | Fragile monolithic scripts | **Decoupled 8-Phase State Machine** with JSON persistence |
 | **Factuality & Grounding** | Blind generation (High hallucination) | **Closed-loop Verifier LLM** cross-checking RAG vs. live web dossiers |
