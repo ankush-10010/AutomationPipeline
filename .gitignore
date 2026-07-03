@@ -32,3 +32,32 @@ ben10_subtitles/
 subliminal_cache.*
 .vscode/
 Ready Dataset/
+
+# YOLO Model Training & Testing Outputs
+YOLO_Final_Dataset/
+final_model/
+test_outputs/
+runs/
+weights/
+*.pt
+
+# Dataset Generation & Side-project Scripts (Do not commit to main pipeline)
+scripts/auto_label_yolo_world.py
+scripts/auto_sort_aliens.py
+scripts/curate_dataset.py
+scripts/extract_dataset.py
+scripts/generate_crop_review.py
+scripts/generate_yolo_dataset.py
+scripts/master_dataset_collector.py
+scripts/phase1_cluster.py
+scripts/phase3_export.py
+scripts/retry_youtube_extraction.py
+scripts/sample_dataset.py
+scripts/test_model_videos.py
+scripts/train_yolo.py
+scripts/video_alien_extractor.py
+Dataset/
+Dataset_Golden/
+Clusters/
+YOLO_Dataset/
+cluster_metadata.json

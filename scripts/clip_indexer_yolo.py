@@ -24,7 +24,8 @@ def classify_clip(model, video_path):
             source=str(video_path), 
             stream=True, 
             verbose=False,
-            device=device
+            device=device,
+            conf=0.65  # High confidence to prevent false positives in official pipeline
         )
     except Exception as e:
         print(f"  [Error reading video: {e}]", end="")

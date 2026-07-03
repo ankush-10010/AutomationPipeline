@@ -312,7 +312,7 @@ CLI Execution Examples:
 
     srt_dir_arg = Path(args.srt_dir).resolve() if args.srt_dir else None
 
-    weights_path = PROJECT_ROOT / "yolo_wt" / "20epochs.pt"
+    weights_path = PROJECT_ROOT / "yolo_wt" / "best.pt"
     if not weights_path.exists():
         candidate_weights = list((PROJECT_ROOT / "yolo_wt").glob("*.pt"))
         if candidate_weights:
