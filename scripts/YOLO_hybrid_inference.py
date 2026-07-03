@@ -9,7 +9,7 @@ Architecture:
   - YOLO runs first on every frame of each clip using the proven multi-frame
     aggregation logic from YOLO_inference_noBoundingBox.py. Characters are
     detected if they appear clearly in at least one frame (Rule 1) or
-    consistently across many frames (Rule 2).
+    in a sustained run of consecutive frames (Rule 2).
   - k-NN runs second on 3-5 sampled frames. Only predictions for classes
     that YOLO was NOT trained on are kept. YOLO's judgment is final for
     its 10 classes.
@@ -53,18 +53,35 @@ log = setup_logging("hybrid_inference")
 
 REF_DB_PATH = PROJECT_ROOT / "yolo_dataset" / "clip_reference_embeddings.npz"
 
-# ── YOLO Aggregation Thresholds (from YOLO_inference_noBoundingBox.py) ───────
+# ── YOLO Aggregation Thresholds ──────────────────────────────────────────────
+#
+# IMPORTANT: YOLO classification assigns probabilities to ALL 10 classes for
+# every single frame — even landscape shots, civilians, or title cards where
+# zero trained characters are on screen. In those frames, confidence spreads
+# thinly across all classes (e.g., 0.15 Four Arms, 0.12 Ditto, 0.10 Ben...).
+# Over hundreds of frames this noise accumulates and triggers false positives.
+#
+# The fix: FRAME_SKIP_THRESHOLD. If YOLO's TOP-1 confidence in a frame is
+# below this value, the entire frame is discarded as "no known character on
+# screen." This is the single most important threshold in the whole pipeline.
+
+# If YOLO's best guess for ANY class is below this, skip the frame entirely.
+# This rejects backgrounds, civilians, title cards, etc.
+FRAME_SKIP_THRESHOLD = 0.50
+
 # Rule 1: Character appeared very clearly in at least one frame
-CLEAR_APPEARANCE_THRESHOLD = 0.85
-# Rule 2: Character appeared consistently across many frames
-MIN_FRAME_RATIO = 0.15
-MIN_MAX_CONF_FOR_RATIO = 0.20
-# Minimum confidence to count a frame as "this character appeared"
-FRAME_PRESENCE_THRESHOLD = 0.10
+CLEAR_APPEARANCE_THRESHOLD = 0.90
+
+# Rule 2: Character appeared in a sustained consecutive run of frames
+MIN_CONSECUTIVE_FRAMES = 5     # Must appear in ≥5 consecutive valid frames
+MIN_MAX_CONF_FOR_RATIO = 0.60  # Peak confidence must be at least 60%
+
+# Minimum per-frame confidence to count toward a consecutive run
+FRAME_PRESENCE_THRESHOLD = 0.30
 
 # ── k-NN Thresholds ─────────────────────────────────────────────────────────
-KNN_MIN_CONFIDENCE = 0.6   # At least 60% of k neighbors must agree
-KNN_MIN_SIMILARITY = 0.20  # Minimum cosine similarity
+KNN_MIN_CONFIDENCE = 0.80  # 80% of k neighbors must agree
+KNN_MIN_SIMILARITY = 0.30  # Minimum cosine similarity
 
 
 # ── YOLO: Process ALL frames (multi-character) ──────────────────────────────
@@ -72,48 +89,71 @@ KNN_MIN_SIMILARITY = 0.20  # Minimum cosine similarity
 def yolo_classify_clip(model, video_path: Path) -> tuple:
     """Run YOLO classification on every frame and aggregate.
 
+    Key design: frames where YOLO's top-1 confidence is below
+    FRAME_SKIP_THRESHOLD are discarded entirely. This prevents
+    background/civilian frames from polluting character counts.
+
     Returns (detected_characters: list, stats: dict).
-    Adapted from YOLO_inference_noBoundingBox.py.
     """
     results = model.predict(source=str(video_path), stream=True, verbose=False)
 
+    # Per-character: list of per-frame confidences aligned with valid_frame_idx
     char_confidences = defaultdict(list)
     total_frames = 0
+    valid_frames = 0
 
     for result in results:
         total_frames += 1
         names_dict = result.names
         probs = result.probs.data.tolist()
 
+        # Gate: Is there ANY character on screen with reasonable confidence?
+        top1_conf = max(probs)
+        if top1_conf < FRAME_SKIP_THRESHOLD:
+            # No known character visible — skip this frame entirely
+            continue
+
+        valid_frames += 1
         for class_id, conf in enumerate(probs):
             char_name = names_dict[class_id]
             char_confidences[char_name].append(conf)
 
-    if total_frames == 0:
-        return [], {}
+    if valid_frames == 0:
+        return [], {"_total_frames": total_frames, "_valid_frames": 0}
 
-    stats = {}
+    stats = {"_total_frames": total_frames, "_valid_frames": valid_frames}
     present_characters = []
 
     for char_name, confs in char_confidences.items():
         max_conf = max(confs)
         avg_conf = sum(confs) / len(confs)
         frames_above = sum(1 for c in confs if c > FRAME_PRESENCE_THRESHOLD)
-        frame_ratio = frames_above / total_frames
+
+        # Compute longest consecutive run of frames above presence threshold
+        longest_run = 0
+        current_run = 0
+        for c in confs:
+            if c > FRAME_PRESENCE_THRESHOLD:
+                current_run += 1
+                if current_run > longest_run:
+                    longest_run = current_run
+            else:
+                current_run = 0
 
         stats[char_name] = {
             "max_confidence": round(max_conf, 4),
             "avg_confidence": round(avg_conf, 4),
             "frames_detected": frames_above,
-            "total_frames": total_frames,
-            "frame_ratio": round(frame_ratio, 4),
+            "valid_frames": valid_frames,
+            "longest_consecutive_run": longest_run,
         }
 
         # Rule 1: Very clear appearance in at least one frame
         if max_conf >= CLEAR_APPEARANCE_THRESHOLD:
             present_characters.append(char_name)
-        # Rule 2: Consistent presence across many frames
-        elif frame_ratio >= MIN_FRAME_RATIO and max_conf >= MIN_MAX_CONF_FOR_RATIO:
+        # Rule 2: Sustained consecutive presence (rejects scattered noise)
+        elif (longest_run >= MIN_CONSECUTIVE_FRAMES
+              and max_conf >= MIN_MAX_CONF_FOR_RATIO):
             present_characters.append(char_name)
 
     return present_characters, stats
