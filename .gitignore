@@ -32,6 +32,7 @@ ben10_subtitles/
 subliminal_cache.*
 .vscode/
 Ready Dataset/
+clip_index.json
 
 # YOLO Model Training & Testing Outputs
 YOLO_Final_Dataset/
