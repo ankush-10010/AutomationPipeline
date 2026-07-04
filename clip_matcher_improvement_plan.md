@@ -32,6 +32,18 @@ In `clip_matcher.py` within the `match_semantic` function (lines 448 to 449), th
 
 To resolve this, the hard skip must be replaced with a conditional evaluation that defaults missing embeddings to a neutral similarity score of zero while allowing the clip to accumulate points through alternative channels. Furthermore, to prevent silent failures during batch processing, the pipeline should execute a startup coverage check that logs a prominent warning when embedding sparsity is detected, rather than relying on manual developer diagnostics.
 
+```mermaid
+flowchart TD
+    A["Input Candidate Clip"] --> B{"Is Clip Banned?"}
+    B -- Yes --> C["Discard Clip"]
+    B -- No --> D{"Has Vector Embedding?"}
+    D -- Yes --> E["Calculate Vector Similarity\n(Score += sim * 10.0)"]
+    D -- No --> F["Set Vector Sim = 0.0\n(Log Startup Warning)"]
+    E --> G["Evaluate Channels 1 & 3\n(Characters, Subtitles, Tags, Location)"]
+    F --> G
+    G --> H["Accumulate Total Score"]
+```
+
 The following code modification must be applied to `scripts/clip_matcher.py` at the beginning of the `match_semantic` function:
 
 ```python
@@ -77,6 +89,16 @@ A critical rule of information retrieval is that noisy or probabilistic signals 
 
 Negative penalties must be strictly reserved for ground-truth-quality verification layers, specifically the YOLO and ArcFace detections stored in `visual_characters` and `prototype_detections`. If a high-confidence computer vision model actively inspects a frame and confirms the absence of a required character, a subtraction is justified. If the metadata is merely empty or derived from general LLM captioning, the system must remain neutral.
 
+```mermaid
+flowchart TD
+    A["Narration Character Mentioned"] --> B{"Matches clip_characters?"}
+    B -- Yes --> C["Check YOLO / ArcFace Confidence"]
+    C --> D["Award Positive Bonus\n(+7.0 + Conf Bonus)"]
+    B -- No --> E{"Ground-Truth Vision Data Exists?\n(YOLO / ArcFace)"}
+    E -- Yes --> F["Verified Visual Absence\n(Apply -4.0 Penalty)"]
+    E -- No --> G["Missing / Noisy Ollama Data\n(Remain Neutral: Score += 0.0)"]
+```
+
 The character scoring block in `scripts/clip_matcher.py` must be refactored to separate ground-truth visual verification from probabilistic text metadata:
 
 ```python
@@ -105,6 +127,20 @@ The character scoring block in `scripts/clip_matcher.py` must be refactored to s
 Subtitles represent the most reliable, cost-effective unused signal in the video library. However, dialogue text possesses a fundamentally different syntactic and semantic structure compared to visual action descriptions. Combining subtitle text into the general text embedding dilutes the vector space. Subtitles must be embedded separately into a dedicated `subtitle_embedding` field during Phase 1 indexing and evaluated as an independent scoring term.
 
 More importantly, before executing vector similarity calculations, the matcher should perform an exact and fuzzy string-matching pass against the raw subtitle transcript. In anime and cartoon explainers, narration scripts frequently quote iconic dialogue or reference named special moves (for example, "It's hero time!" or "Stinkfly spits high-pressure slime"). When a narration segment exhibits a direct lexical overlap with a clip's spoken dialogue, this literal quote match should act as a high-confidence short-circuit, instantly elevating the clip to the top of the candidate pool.
+
+```mermaid
+flowchart TD
+    A["Narration Dialogue / Quote"] --> B{"Literal Quote in clip_subtitles?"}
+    B -- Yes --> C["Literal Quote Short-Circuit\n(Score += 15.0)"]
+    B -- No --> D{"Word-Level Overlap?"}
+    D -- Yes --> E["Dialogue Keyword Bonus\n(Score += overlap * 2.5)"]
+    D -- No --> F["Check Subtitle Vector Space"]
+    C --> F
+    E --> F
+    F --> G{"Cosine Sim > 0.25?"}
+    G -- Yes --> H["Dialogue Vector Bonus\n(Score += sim * 9.0)"]
+    G -- No --> I["No Subtitle Bonus"]
+```
 
 The following implementation must be integrated into `scripts/clip_matcher.py` within the `match_semantic` loop:
 
@@ -142,6 +178,22 @@ Deploying the ArcMax YOLO and ArcFace verification pipeline across all hardware 
 To close this gap without training custom computer vision models or altering ArcFace, the pipeline should exploit the existing CLIP visual embeddings (`clip_visual_embedding`). Because CLIP aligns images and text within a shared latent space, it does not require detected facial bounding boxes. By pre-computing a static dictionary of descriptive text embeddings for every alien form during system initialization, the matcher can directly compare the clip's visual embedding against reference phrases such as `"a clear photo of Heatblast, a flaming fire alien superhero"` or `"a photo of Four Arms, a giant red four-armed muscular alien"`.
 
 Once this zero-infrastructure visual check is operational, the pipeline should implement a graceful degradation hard-filter cascade. For the named human cast, the matcher enforces an exact match on ground-truth `visual_characters`. If the resulting candidate pool drops below a minimum threshold ($N = 10$), the filter relaxes to accept Ollama text `characters`. If still starved, it falls back to full vector search. For alien forms, visual CLIP alignment remains a strong soft bonus until precision is empirically validated.
+
+```mermaid
+flowchart TD
+    A["Target Character / Alien Form"] --> B{"Is Human Cast Member?"}
+    B -- Yes --> C["Stage 1: Hard-Filter on Ground-Truth visual_characters"]
+    B -- No --> D["Calculate CLIP Sim vs. Static Alien Reference Phrases"]
+    C --> E{"Candidate Pool >= 10?"}
+    E -- Yes --> F["Proceed to Scoring"]
+    E -- No --> G["Stage 2: Relax to Ollama Text characters"]
+    G --> H{"Candidate Pool >= 10?"}
+    H -- Yes --> F
+    H -- No --> I["Stage 3: Full Vector Search Fallback"]
+    D --> J["Award Soft Bonus for Alien Transformation"]
+    J --> F
+    I --> F
+```
 
 The following helper function and cascade logic must be added to `scripts/clip_matcher.py`:
 
@@ -184,6 +236,21 @@ Phase 2 replaces the brittle mathematical assumptions of the legacy matcher with
 The most transformative structural upgrade is shifting shot specification upstream into the script generation phase. Currently, `scripts/script_generator.py` prompts Ollama to produce continuous narrative prose. When `clip_matcher.py` later attempts to find video clips, it must reverse-engineer what should appear on screen by computing embedding similarities over the spoken narration. This prose-to-prose matching inherently favors general semantic tone over concrete visual requirements.
 
 When the large language model writes each narration segment, it possesses exact knowledge of the visual action being described. By modifying the script generation prompt to emit structured JSON objects containing both the spoken narration and precise shot metadata, the pipeline transforms clip retrieval from vague vector similarity into exact slot-filling. The required metadata slots include mandatory character lists, specific action verbs, alien transformation states, desired shot framing (wide, medium, close-up, action), and key quotes.
+
+```mermaid
+flowchart LR
+    subgraph Legacy ["Legacy Downstream Guesswork"]
+        L1["Ollama LLM"] -->|Prose Only| L2["Narration Script"]
+        L2 -->|Lossy Text Embedding| L3["Reverse-Engineer Visuals"]
+        L3 -->|Vibe Matching| L4["Suboptimal Clip"]
+    end
+    subgraph Upstream ["Proposed Upstream Structured Slot-Filling"]
+        U1["Ollama LLM"] -->|JSON Schema| U2["Structured Segments"]
+        U2 -->|Spoken Narration| U3["Audio / TTS Pipeline"]
+        U2 -->|Shot Metadata: Characters, Action, Alien| U4["Exact Slot Matching vs. ArcFace / CLIP"]
+        U4 -->|High Precision| U5["Broadcast-Quality Clip"]
+    end
+```
 
 To implement this, `scripts/script_generator.py` must be updated to enforce JSON schema output from Ollama:
 
@@ -243,7 +310,33 @@ $$S_{\text{RRF}}(d \in D) = \sum_{m \in M} \frac{1}{k + r_m(d)}$$
 
 Where $D$ is the pool of candidate clips, $M$ is the set of retrieval channels, $r_m(d)$ is the 1-indexed rank position of clip $d$ in channel $m$, and $k$ is a smoothing constant (standardly set to $60$) that mitigates the impact of outlier rankings. RRF requires no hand-tuned weights, handles scale disparities natively, and represents the industry standard for combining heterogeneous retrieval signals.
 
-The following implementation must replace the sorting logic in `scripts/clip_matcher.py`:
+```mermaid
+flowchart TD
+    A["Candidate Pool: 11,500 Clips"] --> B["Channel 1: Vector Sim Rank"]
+    A --> C["Channel 2: CLIP Visual Rank"]
+    A --> D["Channel 3: Subtitle Match Rank"]
+    A --> E["Channel 4: Character Verif Rank"]
+    B --> F["Calculate Inverse Rank: 1 / (60 + r1)"]
+    C --> G["Calculate Inverse Rank: 1 / (60 + r2)"]
+    D --> H["Calculate Inverse Rank: 1 / (60 + r3)"]
+    E --> I["Calculate Inverse Rank: 1 / (60 + r4)"]
+    F --> J["Sum RRF Channel Scores"]
+    G --> J
+    H --> J
+    I --> J
+    J --> K["Unified Scale-Invariant Clip Ranking"]
+```
+
+```mermaid
+flowchart TD
+    A["Script: 20-60 Segments"] --> B["Stage A: Retrieve Top 30 Candidates per Segment"]
+    B --> C["Build M x N Global Cost Matrix\n(Cost = 1000 - Relevance Score)"]
+    C --> D["Execute Hungarian Algorithm\nscipy.optimize.linear_sum_assignment"]
+    D --> E["Global Combinatorial Optimization"]
+    E --> F["Optimal Video Timeline Assignment\n(Zero Climax Starvation)"]
+```
+
+The following implementation must be integrated into `scripts/assembler.py`:
 
 ```python
 def compute_rrf_scores(clips: list, channel_scores: dict, k: int = 60) -> list:
@@ -280,6 +373,16 @@ None of the proposed retrieval enhancements can be scientifically validated with
 This dataset can be bootstrapped cheaply without manual annotation by leveraging an LLM in reverse. By feeding an offline script the `episode_summary` and `scene_context` of fifty distinct, highly engaging clips from across the series, the LLM can be prompted to write a single sentence of broadcast narration that specifically describes the unique action in each clip. Because the originating clip filename is known during generation, this automatically yields a perfect ground-truth evaluation pair.
 
 A dedicated evaluation script, `scripts/eval_retrieval.py`, must be created to measure pipeline accuracy against this benchmark before and after every codebase modification. The primary metrics tracked must be Precision@1 (percentage of times the exact ground-truth clip is ranked first) and Precision@5 (percentage of times the ground-truth clip appears in the top five shortlist):
+
+```mermaid
+flowchart TD
+    A["Select 100 High-Quality Library Clips"] --> B["Extract episode_summary + scene_context"]
+    B --> C["Feed to Offline LLM (Reverse Prompting)"]
+    C --> D["Generate Synthetic Broadcast Narration Line"]
+    D --> E["Store Ground-Truth Pair: (Narration, Clip Filename)"]
+    E --> F["Run eval_retrieval.py Across Candidate Pipeline"]
+    F --> G["Calculate Empirical Metrics:\nPrecision@1 & Precision@5"]
+```
 
 ```python
 """
@@ -352,30 +455,19 @@ Bi-encoders such as MiniLM and CLIP are computationally efficient because they e
 
 To achieve deep comprehension without incurring extreme latency, the retrieval architecture must transition to a two-stage paradigm: retrieve cheap, verify expensive.
 
-```
-+-------------------------------------------------------------------------+
-|                  STAGE A: CHEAP CANDIDATE RETRIEVAL                     |
-|                                                                         |
-|  [Full Library: 11,500 Clips]                                           |
-|       │                                                                 |
-|       ├──> Hard Filter Cascade (Ground-truth Cast & Alien Reference)    |
-|       └──> Reciprocal Rank Fusion (MiniLM + CLIP + Subtitles + Tags)    |
-|                                                                         |
-|  [Output: Top 25 Candidate Shortlist per Segment]                       |
-+-------------------------------------------------------------------------+
-                                    │
-                                    ▼
-+-------------------------------------------------------------------------+
-|                 STAGE B: PRECISE SEMANTIC RERANKING                     |
-|                                                                         |
-|  [Shortlist: 25 Clips per Segment]                                      |
-|       │                                                                 |
-|       └──> Lightweight VLM / LLM Reranking Judge                        |
-|            Evaluates: Spoken Narration + Shot Metadata vs.              |
-|                       scene_context + subtitles + visual_characters     |
-|                                                                         |
-|  [Output: Confirmed Optimal Top-3 Clips per Segment]                    |
-+-------------------------------------------------------------------------+
+```mermaid
+flowchart TD
+    subgraph StageA ["STAGE A: CHEAP CANDIDATE RETRIEVAL (11,500 Clips)"]
+        A1["Full Library Pool"] --> A2["Hard Filter Cascade:\nGround-Truth Cast & Alien Reference"]
+        A2 --> A3["Reciprocal Rank Fusion:\nMiniLM + CLIP + Subtitles + Tags"]
+        A3 --> A4["Top 25 Candidate Shortlist per Segment"]
+    end
+    subgraph StageB ["STAGE B: PRECISE SEMANTIC RERANKING (25 Clips)"]
+        A4 --> B1["Construct Verification Prompt:\nNarration + Shot Metadata vs. scene_context + subtitles + visual_characters"]
+        B1 --> B2["Lightweight VLM / Local LLM Judge\n(Llama 3.1 8B / Mistral 7B)"]
+        B2 --> B3["Assign 1-5 Alignment Score"]
+        B3 --> B4["Confirmed Optimal Top-3 Clips per Segment"]
+    end
 ```
 
 In Stage A, the system applies RRF and cascading hard filters across the full 11,500-clip library to rapidly prune the search space down to a shortlist of twenty-five high-probability candidates per segment. This step executes in milliseconds. In Stage B, the system dedicates computational resources to precisely verifying only those twenty-five candidates. It constructs a structured prompt containing the segment's narration and shot metadata alongside each candidate's rich textual transcripts (`scene_context`, `subtitles`, `visual_characters`, and `action`). A fast local LLM (such as Llama 3.1 8B or Mistral 7B via Ollama) evaluates the shortlist and assigns a precise semantic alignment score from one to five. Because this verification runs only on the shortlist, it requires minimal API or GPU overhead while completely eliminating vibe-matching hallucinations.
@@ -465,11 +557,38 @@ Furthermore, instead of discarding incompatible durations, `assembler.py` must a
 1. **Speed-Ramping Short Clips**: If an optimal action clip is 1.5 seconds long but the narration segment requires 2.0 seconds, the assembler should apply smooth optical-flow interpolation or speed-ramping (slow down playback by up to twenty-five percent) to stretch the clip without visible stutter. Very brief loops (<1.0s) can utilize ping-pong looping for background character reactions.
 2. **Confidence-Gated Sub-Window Trimming**: When an optimal clip is 12.0 seconds long but the segment requires only 3.5 seconds, the assembler must not blindly take the first three seconds. By leveraging the per-frame ArcMax character confidence and motion vectors stored in `detection_meta`, the assembler scans the clip to extract the exact 3.5-second sub-window that exhibits the highest character recognition confidence and peak visual motion.
 
+```mermaid
+flowchart TD
+    A["Whisper Word-Level Audio Timestamps"] --> B["Compare Top-Ranked Clip Duration vs. Sentence Window"]
+    B --> C{"Is Duration Compatible?"}
+    C -- "Exact Fit (1.3s - 5.0s)" --> D["Direct Timeline Placement"]
+    C -- "Slightly Mismatched" --> E["Flex Audio Sentence Boundary at Syntactic Pauses"]
+    C -- "Clip Too Short (< 1.3s)" --> F{"Duration < 1.0s?"}
+    F -- Yes --> G["Apply Ping-Pong Looping"]
+    F -- No --> H["Apply Optical-Flow Speed-Ramping\n(Slow down by up to 25%)"]
+    C -- "Clip Too Long (> 5.0s)" --> I["Scan ArcMax detection_meta\nfor Peak Character Confidence & Motion"]
+    I --> J["Trim to Optimal Sub-Window"]
+    E --> D
+    G --> D
+    H --> D
+    J --> D
+```
+
 ### 3.5 Temporal Context Biasing
 
 Video essays frequently explain narrative arcs using chronological transitional phrasing, such as "immediately after the explosion," "later that night," "before Vilgax arrived," or "the following morning." The legacy matcher ignores these temporal markers, treating every sentence as an isolated semantic query. This causes jarring visual jumps where a scene from Season 3 Episode 10 is followed immediately by an establishing shot from Season 1 Episode 2 simply because the keyword vectors aligned.
 
 Because episode and scene indices are explicitly encoded in project filenames (for example, `s01e04_scene_042.mp4`), temporal continuity can be enforced with zero additional indexing overhead. The matcher should scan narration segments for sequential connective language. When forward-advancing markers ("then", "after", "next", "consequently") are detected, the retrieval engine applies a Gaussian scoring bias that favors candidate clips originating from scene indices immediately following the previously selected scene within the same episode. Conversely, retrospective markers ("earlier", "previously", "before") bias retrieval toward preceding scene indices, creating natural, professional cinematic continuity.
+
+```mermaid
+flowchart TD
+    A["Scan Narration Segment for Connective Phrasing"] --> B{"Transitional Marker Detected?"}
+    B -- "Forward Marker (then, after, next)" --> C["Extract Previous Clip Filename Index\n(e.g., s01e04_scene_042)"]
+    C --> D["Apply Forward Gaussian Bias\nFavor Scene Indices > 042 in Same Episode"]
+    B -- "Retrospective Marker (earlier, before)" --> E["Extract Previous Clip Filename Index"]
+    E --> F["Apply Backward Gaussian Bias\nFavor Scene Indices < 042 in Same Episode"]
+    B -- "No Marker / Isolated Query" --> G["Standard Semantic Search\n(Zero Temporal Bias)"]
+```
 
 ### 3.6 Vector Database Indexing (ChromaDB / pgvector)
 
@@ -483,25 +602,27 @@ During Phase 1 indexing, each clip's `embedding`, `clip_visual_embedding`, and `
 
 To ensure rapid stabilization without disrupting ongoing video production, the proposed architectural upgrades must be executed in a strict priority sequence based on effort-to-payoff ratio. Immediate zero-infrastructure code modifications take precedence over structural refactoring and advanced optimization algorithms.
 
-```
-+-----------------------------------------------------------------------------------+
-|                        IMPLEMENTATION ROADMAP & TIMELINE                          |
-|                                                                                   |
-|  [WEEK 1: ZERO-INFRASTRUCTURE & HIGH-ROI CORRECTIONS]                             |
-|    ├──> Priority 1: Upstream Script Metadata in script_generator.py (Item #4)     |
-|    ├──> Priority 2: Fix Penalty Logic & Un-ban Missing Embeddings (Items #2, #1)  |
-|    └──> Priority 3: Subtitle Integration & Literal Quote Matching (Item #5)       |
-|                                                                                   |
-|  [WEEK 2: SCORING FOUNDATIONS & BENCHMARKING]                                     |
-|    ├──> Priority 4: Reciprocal Rank Fusion (RRF) Migration (Item #1)              |
-|    ├──> Priority 5: Build 100-Pair Gold Evaluation Set & Scoreboard (Item #8)     |
-|    └──> Priority 6: CLIP Reference Phrases for Alien Forms (Item #7)              |
-|                                                                                   |
-|  [WEEK 3: ADVANCED RETRIEVAL & GLOBAL ASSEMBLY]                                   |
-|    ├──> Priority 7: Two-Stage Retrieval with LLM/VLM Reranking (Item #3)          |
-|    ├──> Priority 8: Global Hungarian Algorithm Assignment (Item #9)               |
-|    └──> Priority 9: MMR Diversity & Duration Co-Design (Items #6, #10)            |
-+-----------------------------------------------------------------------------------+
+```mermaid
+flowchart LR
+    subgraph W1 ["Week 1: Zero-Infra & High-ROI Corrections"]
+        P1["Priority 1: Upstream Script Metadata\n(script_generator.py)"]
+        P2["Priority 2: Fix Penalty Logic & Un-ban Embeddings\n(clip_matcher.py)"]
+        P3["Priority 3: Subtitle Wiring & Quote Matching\n(clip_matcher.py)"]
+        P1 --> P2 --> P3
+    end
+    subgraph W2 ["Week 2: Scoring Foundations & Benchmarking"]
+        P4["Priority 4: RRF Migration\n(clip_matcher.py)"]
+        P5["Priority 5: 100-Pair Gold Eval Set\n(eval_retrieval.py)"]
+        P6["Priority 6: CLIP Alien Reference Phrases\n(clip_matcher.py)"]
+        P4 --> P5 --> P6
+    end
+    subgraph W3 ["Week 3: Advanced Retrieval & Global Assembly"]
+        P7["Priority 7: Two-Stage Retrieval\n(LLM Reranking)"]
+        P8["Priority 8: Global Hungarian Assignment\n(assembler.py)"]
+        P9["Priority 9: MMR Diversity & Duration Co-Design\n(assembler.py)"]
+        P7 --> P8 --> P9
+    end
+    W1 --> W2 --> W3
 ```
 
 ### Priority 1: Upstream Script Metadata in `script_generator.py` (Item #4)
