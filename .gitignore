@@ -65,3 +65,4 @@ Clusters/
 YOLO_Dataset/
 cluster_metadata.json
 clip_index.json
+test_find_video.py

@@ -33,6 +33,7 @@ import os
 import sys
 import re
 import cv2
+import time
 import json
 import torch
 import numpy as np
@@ -60,6 +61,8 @@ DEFAULT_PROTO_PATH = PROJECT_ROOT / "prototypes.npz"
 DEFAULT_TAU = 0.50
 DEFAULT_MIN_CONSECUTIVE = 3
 DEFAULT_N_FRAMES = 20
+DEFAULT_MIN_GLOBAL_CLIPS = 8
+NON_CHARACTER_CLASSES = {"Blast"}
 
 
 class ProjectionHead(nn.Module):
@@ -197,6 +200,7 @@ def main():
     parser.add_argument("--cascade-threshold", type=float, default=0.85, help="YOLO confidence to skip ArcFace")
     parser.add_argument("--min-run", type=int, default=DEFAULT_MIN_CONSECUTIVE)
     parser.add_argument("--n-frames", type=int, default=DEFAULT_N_FRAMES)
+    parser.add_argument("--min-global-clips", type=int, default=DEFAULT_MIN_GLOBAL_CLIPS, help="Prune characters with fewer than this many clips")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
@@ -253,11 +257,16 @@ def main():
     char_counter = Counter()
 
     log.info(f"Starting Crop & Verify hybrid processing on {len(target_clips)} clips...")
+    
+    start_time = time.time()
 
     for i, clip in enumerate(target_clips):
         # Skip logic
         if clip.get("yolo_arcface", False) and not args.force:
             skipped += 1
+            # Add existing tags to the global counter so they don't get falsely pruned at the end!
+            for char in clip.get("visual_characters", []):
+                char_counter[char] += 1
             continue
 
         video_path = find_video(clip.get("filename", ""), clips_dir)
@@ -271,6 +280,8 @@ def main():
             continue
 
         per_frame_detections = []
+        clip_yolo_tags = set()
+        clip_arc_tags = set()
 
         for frame_pil in frames:
             # Step 1: YOLO Cascade
@@ -284,6 +295,7 @@ def main():
             # Immediately accept highly confident YOLO predictions
             for name, conf in direct_matches.items():
                 frame_matches[name] = conf
+                clip_yolo_tags.add(name)
 
             # Step 2: CLIP + ArcFace Verify (Only on low confidence crops)
             if crops_to_verify:
@@ -303,6 +315,7 @@ def main():
                     for name, sim in crop_matches.items():
                         if name not in frame_matches or sim > frame_matches[name]:
                             frame_matches[name] = sim
+                            clip_arc_tags.add(name)
             
             per_frame_detections.append(frame_matches)
 
@@ -311,10 +324,16 @@ def main():
 
         existing_visual = set(clip.get("visual_characters", []))
         existing_chars = set(clip.get("characters", []))
-        new_tagged = set(tagged)
+        existing_tags = set(clip.get("visual_tags", []))
+        
+        new_chars = set(t for t in tagged if t not in NON_CHARACTER_CLASSES)
+        new_objects = set(t for t in tagged if t in NON_CHARACTER_CLASSES)
 
-        clip["visual_characters"] = sorted(list(existing_visual.union(new_tagged)))
-        clip["characters"] = sorted(list(existing_chars.union(new_tagged)))
+        clip["visual_characters"] = sorted(list(existing_visual.union(new_chars)))
+        clip["characters"] = sorted(list(existing_chars.union(new_chars)))
+        
+        if new_objects or existing_tags:
+            clip["visual_tags"] = sorted(list(existing_tags.union(new_objects)))
         clip["yolo_arcface"] = True
         
         proto_det = clip.get("prototype_detections", {})
@@ -330,7 +349,29 @@ def main():
             char_counter[char] += 1
         processed += 1
 
-        log.info("[%d/%d] %s → %s", i + 1, len(target_clips), clip.get("filename", "")[:20], tagged)
+        # Build beautiful tag strings showing source
+        display_tags = []
+        for t in tagged:
+            if t in clip_yolo_tags and t in clip_arc_tags:
+                display_tags.append(f"{t} [Both]")
+            elif t in clip_yolo_tags:
+                display_tags.append(f"{t} [YOLO]")
+            elif t in clip_arc_tags:
+                display_tags.append(f"{t} [ArcFace]")
+            else:
+                display_tags.append(t)
+                
+        # Calculate ETA
+        elapsed = time.time() - start_time
+        if processed > 0:
+            time_per_clip = elapsed / processed
+            remaining = len(target_clips) - (i + 1)
+            eta_sec = int(remaining * time_per_clip)
+            eta_str = time.strftime('%H:%M:%S', time.gmtime(eta_sec))
+        else:
+            eta_str = "Calculating..."
+
+        log.info("[%d/%d | ETA: %s] %s → %s", i + 1, len(target_clips), eta_str, clip.get("filename", "")[:20], display_tags)
 
         if processed % 50 == 0:
             log.info("Checkpoint: %d clips processed. Saving clip_index.json...", processed)
@@ -338,6 +379,29 @@ def main():
                 clip_data["clips"] = clips
             with open(clip_index_path, "w", encoding="utf-8") as f:
                 json.dump(clip_data, f, indent=2)
+
+    # -- GLOBAL FREQUENCY PRUNING PASS --
+    pruned_chars = set()
+    for char, count in char_counter.items():
+        if count < args.min_global_clips:
+            pruned_chars.add(char)
+            
+    if pruned_chars:
+        log.info("Performing Global Frequency Pruning...")
+        log.info("Pruning characters with < %d clips: %s", args.min_global_clips, list(pruned_chars))
+        for clip in target_clips:
+            if "visual_characters" in clip:
+                clip["visual_characters"] = [c for c in clip["visual_characters"] if c not in pruned_chars]
+            if "characters" in clip:
+                clip["characters"] = [c for c in clip["characters"] if c not in pruned_chars]
+            if "prototype_detections" in clip:
+                for pc in list(clip["prototype_detections"].keys()):
+                    if pc in pruned_chars:
+                        del clip["prototype_detections"][pc]
+        
+        # Adjust char_counter for final summary
+        for char in pruned_chars:
+            del char_counter[char]
 
     # Final save
     if isinstance(clip_data, dict):

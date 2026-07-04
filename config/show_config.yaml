@@ -34,7 +34,7 @@ shows:
         description: "Reformed rogue, absorbs matter."
         visual: "black shirt, dark hair, teenager"
       - name: "Vilgax"
-        aliases: ["Vilgax"]
+        aliases: ["Vilgax", "Vilgex"]
         description: "The conqueror of 10 worlds, seeks the Omnitrix."
         visual: "squid face, cyborg, giant"
 
@@ -94,10 +94,10 @@ shows:
 
     # -- Episode data file (for topic mining) --------------------------------
     # Point this to a text/json file containing episode summaries
-    episode_data_file: "./clips/rick_and_morty/episode_summaries.txt"
+    episode_data_file: "./clips/ben10/episode_summaries.txt"
 
     # -- Clips directory -----------------------------------------------------
-    clips_dir: "./clips/rick_and_morty"
+    clips_dir: "./clips/ben10"
 
 # ============================================================================
 # Template for adding a new show — copy, rename the key, fill in the details
