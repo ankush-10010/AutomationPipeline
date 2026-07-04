@@ -212,6 +212,35 @@ def run_yolo_full(force=False, yolo_only=False):
     subprocess.run(cmd)
 
 
+# ── Pipeline C: YOLO + ArcFace Cascade (Advanced) ────────────────────────────
+
+def run_arcmax_cascade_test(episode="s1e1"):
+    print_header(f"[Cascade] Test Cascade Inference on {episode.upper()}")
+    if not YOLO_WEIGHTS.exists() or not ARCFACE_HEAD.exists() or not PROTOTYPES.exists():
+        print("  ❌ Missing required weights. Need YOLO, ArcFace head, and prototypes.")
+        return
+    cmd = [
+        sys.executable,
+        str(PROJECT_ROOT / "scripts" / "run_visual_tagging_pipeline_arcmax.py"),
+        "--episode", episode, "--force",
+    ]
+    print(f"  Running: {' '.join(cmd)}\n")
+    subprocess.run(cmd)
+
+def run_arcmax_cascade_full(force=False):
+    print_header("[Cascade] Full Cascade Inference on ALL Clips")
+    if not YOLO_WEIGHTS.exists() or not ARCFACE_HEAD.exists() or not PROTOTYPES.exists():
+        print("  ❌ Missing required weights. Need YOLO, ArcFace head, and prototypes.")
+        return
+    cmd = [
+        sys.executable,
+        str(PROJECT_ROOT / "scripts" / "run_visual_tagging_pipeline_arcmax.py"),
+    ]
+    if force:
+        cmd.append("--force")
+    print(f"  Running: {' '.join(cmd)}\n")
+    subprocess.run(cmd)
+
 # ── Main Menu ────────────────────────────────────────────────────────────────
 
 def main():
@@ -231,13 +260,17 @@ def main():
         print("  6. [Step B2] Test YOLO Hybrid on s1e1")
         print("  7. [Step B3] Run Full YOLO Hybrid on ALL Clips")
         print()
+        print("PIPELINE C — YOLO 0.85 Cascade + ArcFace (Advanced):")
+        print("  8. Test Cascade on s1e1")
+        print("  9. Run Full Cascade on ALL Clips")
+        print()
         print("ADVANCED:")
-        print("  8. Force re-run Prototype Inference (--force)")
-        print("  9. Force re-run YOLO Hybrid (--force)")
+        print("  10. Force re-run Prototype Inference (--force)")
+        print("  11. Force re-run YOLO Hybrid (--force)")
         print("  0. Exit")
         print("-" * 70)
 
-        choice = input("\nEnter choice (0-9) [Recommended: 1 → 2 → 3 → 4]: ").strip()
+        choice = input("\nEnter choice (0-11) [Recommended: 1 → 2 → 3 → 4]: ").strip()
 
         if choice == "1":
             run_arcface_colab_instructions()
@@ -258,8 +291,14 @@ def main():
             if confirm in ["y", "yes", ""]:
                 run_yolo_full()
         elif choice == "8":
-            run_arcface_full(force=True)
+            run_arcmax_cascade_test()
         elif choice == "9":
+            confirm = input("  Process ALL clips with Cascade? (y/n) [y]: ").strip().lower()
+            if confirm in ["y", "yes", ""]:
+                run_arcmax_cascade_full()
+        elif choice == "10":
+            run_arcface_full(force=True)
+        elif choice == "11":
             run_yolo_full(force=True)
         elif choice == "0":
             print("\nExiting. Goodbye!")
