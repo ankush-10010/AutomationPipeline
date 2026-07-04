@@ -256,7 +256,7 @@ def main():
 
     for i, clip in enumerate(target_clips):
         # Skip logic
-        if clip.get("visual_tagged", False) and not args.force:
+        if clip.get("yolo_arcface", False) and not args.force:
             skipped += 1
             continue
 
@@ -309,17 +309,22 @@ def main():
         aggregated = aggregate_with_contiguity(per_frame_detections, args.min_run)
         tagged = sorted([name for name, info in aggregated.items() if info["tagged"]])
 
-        clip["visual_characters"] = tagged
-        clip["characters"] = tagged
-        clip["visual_tagged"] = True
-        clip["prototype_detections"] = {
-            name: {
-                "max_similarity": info["max_similarity"],
-                "longest_run": info["longest_run"],
-            }
-            for name, info in aggregated.items()
-            if info["max_similarity"] > 0.3
-        }
+        existing_visual = set(clip.get("visual_characters", []))
+        existing_chars = set(clip.get("characters", []))
+        new_tagged = set(tagged)
+
+        clip["visual_characters"] = sorted(list(existing_visual.union(new_tagged)))
+        clip["characters"] = sorted(list(existing_chars.union(new_tagged)))
+        clip["yolo_arcface"] = True
+        
+        proto_det = clip.get("prototype_detections", {})
+        for name, info in aggregated.items():
+            if info["max_similarity"] > 0.3:
+                proto_det[name] = {
+                    "max_similarity": info["max_similarity"],
+                    "longest_run": info["longest_run"],
+                }
+        clip["prototype_detections"] = proto_det
 
         for char in tagged:
             char_counter[char] += 1
