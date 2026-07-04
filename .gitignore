@@ -63,3 +63,4 @@ Dataset_Golden/
 Clusters/
 YOLO_Dataset/
 cluster_metadata.json
+clip_index.json
