@@ -11,6 +11,11 @@ CRITICAL DIRECTIVES:
 
 STRICT WORD COUNT: The total narration text across all sections must be exactly 85 to 110 words. Every word must earn its place.
 
+EXACT CHARACTER NAMING (YOLO COMPATIBILITY):
+When referring to any of the characters listed below, you MUST use their exact name as written here (e.g., say "Max Tennyson" instead of "Grandpa"). This is required so our computer vision system can find matching clips. If a character is not on this list, use any appropriate name.
+Strict Name List:
+Ben Tennyson, Benwolf, Blast, Buzzshock, Cannonbolt, Charmcaster, Diamondhead, Ditto, Dr. Animo, Elf Gwen, Eye Guy, Four Arms, Ghostfreak, Grey Matter, Gwen Tennyson, Heatblast, Hex, Kevin Levin, Kraab, Max Tennyson, Ripjaws, Sixsix, Snare-oh, Stinkfly, Upchuck, Upgrade, Vilgax, Way Big, Wildmutt, Wildvine, XLR8
+
 MANDATORY 5-ACT RETENTION LOOP STRUCTURE:
 You MUST structure your script into exactly five psychological retention beats using these exact headers:
 

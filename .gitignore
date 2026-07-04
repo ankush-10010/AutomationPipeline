@@ -40,6 +40,7 @@ test_outputs/
 runs/
 weights/
 *.pt
+*.npz
 
 # Dataset Generation & Side-project Scripts (Do not commit to main pipeline)
 scripts/auto_label_yolo_world.py
