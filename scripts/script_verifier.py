@@ -493,7 +493,9 @@ def generate_verified_script(
                 "\n\nCRITICAL MULTIVERSAL ARCHIVE FACT INJECTION:\n"
                 "A multiversal lore scan flagged inaccuracies. Incorporate these verified canon truths into your script:\n"
                 + corrections_text +
-                "\n\nFINAL MANDATE: Output strictly your 4-act narration script using the exact [HOOK], [PROOF], [ESCALATION], and [PAYOFF] bracket headers. Zero chatbot greetings ('Here is the script'), zero title introductions, and zero concluding notes ('Note:'). Start speaking immediately with [HOOK]."
+                "\n\nFINAL MANDATE: Output strictly your 5-act narration script using the exact [HOOK], [ANCHOR], [THE TURN], [RABBIT HOLE], and [THE LOOP] bracket headers.\n"
+                "Directly under each header, you MUST output a single line containing a valid JSON object with your visual instructions for that scene, matching the JSON format specified earlier.\n"
+                "Zero chatbot greetings ('Here is the script'), zero title introductions. Start speaking immediately with [HOOK]."
             )
             candidate_script = call_ollama(fresh_prompt, pipeline_config)
 

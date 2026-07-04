@@ -723,6 +723,23 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
     manifest_segments = []
     stats = {"matched": 0, "fallback": 0, "total": 0, "adjacent_used": 0}
 
+    # --- Load Upstream Metadata ---
+    upstream_metadata = []
+    try:
+        from config_loader import PROJECT_ROOT
+        state_path = PROJECT_ROOT / "pipeline_state.json"
+        if state_path.exists():
+            state = load_json(state_path)
+            if state and "phase_outputs" in state:
+                script_path = state["phase_outputs"].get("script", "")
+                if script_path:
+                    meta_path = str(script_path).replace(".txt", ".metadata.json")
+                    if Path(meta_path).exists():
+                        upstream_metadata = load_json(meta_path) or []
+                        log.info(f"Loaded upstream metadata with {len(upstream_metadata)} sections.")
+    except Exception as e:
+        log.debug(f"Could not load upstream metadata: {e}")
+
     # --- BM25 Initialization ---
     try:
         from scripts.bm25 import SimpleBM25
@@ -747,10 +764,12 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             bm25_corpus.append(doc_words)
         bm25_index = SimpleBM25(bm25_corpus)
 
-    cooldown_set = set()
+    from collections import deque
+    cooldown_set = deque(maxlen=cooldown_size)
 
     def _push_cooldown(filename: str):
-        cooldown_set.add(filename)
+        if filename not in cooldown_set:
+            cooldown_set.append(filename)
 
     active_characters = set()
     active_locations = set()
@@ -764,7 +783,36 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             log.warning("Segment %d has empty text, skipping", seg_id)
             continue
 
-        current_chars = extract_character_mentions(seg_text, show_config)
+        # --- Align Upstream Metadata ---
+        seg_meta = {}
+        if upstream_metadata:
+            seg_words = set(extract_keywords(seg_text))
+            best_overlap = 0
+            for section in upstream_metadata:
+                sec_text = section.get("text", "")
+                sec_words = set(extract_keywords(sec_text))
+                overlap = len(seg_words & sec_words)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    seg_meta = section.get("metadata", {})
+            if best_overlap < 2:
+                seg_meta = {}
+
+        current_chars = set()
+        meta_chars = seg_meta.get("characters_present", [])
+        if meta_chars:
+            current_chars = {c.lower() for c in meta_chars if c}
+        else:
+            current_chars = extract_character_mentions(seg_text, show_config)
+            
+        meta_alien = seg_meta.get("alien_form")
+        if meta_alien and str(meta_alien).lower() != "null":
+            seg_text = f"{seg_text} {meta_alien}"
+            
+        meta_action = seg_meta.get("action_verb")
+        if meta_action and str(meta_action).lower() != "null":
+            seg_text = f"{seg_text} {meta_action}"
+
         current_locs = extract_location_mentions(seg_text, show_config)
 
         if current_chars:

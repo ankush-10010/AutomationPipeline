@@ -61,4 +61,14 @@ Max knows the watch is actually a parasite consuming his grandson. And whenever 
 =========================================
 
 FINAL OUTPUT:
-Generate ONLY your assigned topic script using the exact bracket headers: [HOOK], [ANCHOR], [THE TURN], [RABBIT HOLE], and [THE LOOP]. Do not add any introductory or concluding text outside the brackets.
+Generate ONLY your assigned topic script using the exact bracket headers: [HOOK], [ANCHOR], [THE TURN], [RABBIT HOLE], and [THE LOOP]. 
+Directly under each header, you MUST output a single line containing a valid JSON object with your visual instructions for that scene. 
+The JSON must have this exact format:
+{"characters_present": ["name1", "name2"], "alien_form": "alien name or null", "action_verb": "action description"}
+
+Example of a valid output block:
+[HOOK]
+{"characters_present": ["Ben Tennyson"], "alien_form": null, "action_verb": "looking terrified"}
+Did you miss the terrifying truth about the Omnitrix's timeout function?
+
+Do not add any introductory or concluding text outside the blocks. Start speaking immediately with [HOOK].

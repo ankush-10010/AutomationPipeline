@@ -145,30 +145,61 @@ def call_ollama(prompt: str, pipeline_config: dict) -> str:
 def save_script(topic: str, script_text: str, pipeline_config: dict) -> Path:
     """
     Save the generated script to topics/approved/{sanitized_name}.txt.
-    Returns the path to the saved file.
+    Also extracts and saves JSON shot metadata to {sanitized_name}.metadata.json.
+    Returns the path to the saved .txt file.
     """
+    import json
     approved_dir = get_project_path("topics_approved", pipeline_config)
     approved_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = sanitize_filename(topic) + ".txt"
-    out_path = approved_dir / filename
+    filename = sanitize_filename(topic)
+    out_path = approved_dir / f"{filename}.txt"
 
     # Avoid overwriting — append a counter if the file exists
     if out_path.exists():
         counter = 1
         while out_path.exists():
-            out_path = approved_dir / f"{sanitize_filename(topic)}_{counter}.txt"
+            out_path = approved_dir / f"{filename}_{counter}.txt"
             counter += 1
+            
+    meta_path = out_path.with_suffix(".metadata.json")
 
-    # Strip section brackets like [HOOK], [PROOF], [ESCALATION], [PAYOFF]
-    clean_text = re.sub(r"\[.*?\]\s*", "", script_text).strip()
+    metadata_list = []
+    pure_narration = []
+
+    # Split by brackets like [HOOK], [ANCHOR]
+    segments = re.split(r"\[.*?\]\s*", script_text)
+    for seg in segments:
+        seg = seg.strip()
+        if not seg:
+            continue
+            
+        # Extract JSON if present at the start of the segment
+        match = re.match(r'(\{.*?\})\s*(.*)', seg, re.DOTALL)
+        if match:
+            json_str = match.group(1)
+            text_str = match.group(2).strip()
+            try:
+                meta = json.loads(json_str)
+            except json.JSONDecodeError:
+                meta = {}
+            metadata_list.append({"metadata": meta, "text": text_str})
+            pure_narration.append(text_str)
+        else:
+            metadata_list.append({"metadata": {}, "text": seg})
+            pure_narration.append(seg)
+
+    clean_text = "\n\n".join(pure_narration)
     clean_text = re.sub(r"\n{3,}", "\n\n", clean_text)
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(clean_text)
         f.write("\n")
+        
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(metadata_list, f, indent=2)
 
-    log.info("Script saved → %s", out_path)
+    log.info("Script saved → %s (and .metadata.json)", out_path)
     return out_path
 
 
