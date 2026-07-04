@@ -190,32 +190,36 @@ def _is_banned_clip(clip: dict) -> bool:
     return False
 
 
-def calculate_dominant_episode(full_script: str, clips: list) -> str:
-    """Find the episode prefix that shares the most keywords with the script."""
-    script_keywords = extract_keywords(full_script)
-    if not script_keywords:
-        return None
-
-    episode_scores = {}
-    for clip in clips:
-        ep_key, _ = parse_clip_identity(clip.get("filename", ""))
-        if not ep_key:
-            continue
+def classify_intent(text: str, show_config: dict) -> dict:
+    """Classify the intent of the narration segment to adjust scoring weights."""
+    text_lower = text.lower()
+    
+    action_words = {"explosion", "attack", "destroy", "fight", "blast", "shoot", "dodge", "punch", "kick", "battle", "transform", "hero time", "run", "chase"}
+    character_words = extract_character_mentions(text, show_config)
+    
+    action_count = sum(1 for w in action_words if w in text_lower)
+    char_count = len(character_words)
+    
+    weights = {
+        "rrf_scale": 300.0,
+        "char_bonus": 10.0,
+        "alien_bonus": 15.0,
+        "plot_bonus": 1.5,
+    }
+    
+    if action_count > 0 and char_count == 0:
+        weights["rrf_scale"] = 450.0
+        weights["plot_bonus"] = 3.0
+    elif char_count > 0 and action_count == 0:
+        weights["char_bonus"] = 20.0
+        weights["alien_bonus"] = 25.0
+        weights["rrf_scale"] = 200.0
+    elif char_count > 0 and action_count > 0:
+        weights["char_bonus"] = 15.0
+        weights["alien_bonus"] = 20.0
+        weights["rrf_scale"] = 350.0
         
-        clip_action = _normalize(clip.get("action", ""))
-        clip_tags = {str(t).lower() for t in clip.get("tags", [])}
-        action_words = extract_keywords(clip_action)
-        
-        overlap = script_keywords & (action_words | clip_tags)
-        episode_scores[ep_key] = episode_scores.get(ep_key, 0) + len(overlap)
-
-    if not episode_scores:
-        return None
-
-    best_ep = max(episode_scores, key=episode_scores.get)
-    if episode_scores[best_ep] > 0:
-        return best_ep
-    return None
+    return weights
 
 
 def _get_proto_sim(proto_dets: dict, char_name: str) -> float:
@@ -308,8 +312,6 @@ def score_clip_keyword(segment_text: str, clip: dict, show_config: dict,
 def match_keyword(segment_text: str, clips: list, show_config: dict,
                   threshold: int = 1,
                   cooldown_set: set = None,
-                  cooldown_penalty: float = -50.0,
-                  dominant_episode_key: str = None,
                   seg_characters: set = None,
                   seg_locations: set = None,
                   ban_cooldown: bool = False) -> tuple:
@@ -370,60 +372,42 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
         raw_s = s
         reason = " | ".join(reason_parts)
 
-        # Dominant episode bonus
-        if dominant_episode_key:
-            ep_key, _ = parse_clip_identity(clip.get("filename", ""))
-            if ep_key == dominant_episode_key:
-                s += 2.0
-                raw_s += 2.0
-                reason += " | Dominant Ep"
-
         # Apply cooldown penalty
         if clip.get("filename", "") in cooldown_set:
             if ban_cooldown:
                 continue
-            s = (s * 0.01) - 0.001
-            reason += " [COOLDOWN PENALTY]"
+            reason += " [PREVIOUSLY USED]"
 
         scored_clips.append((s, raw_s, clip, reason))
 
-    scored_clips.sort(key=lambda x: x[0], reverse=True)
+    valid_clips = [x for x in scored_clips if x[1] >= threshold]
+    if not valid_clips:
+        return [], 0.0, ""
 
-    if scored_clips and scored_clips[0][1] >= threshold:
-        top_clips = []
-        for s, r, c, reason in scored_clips:
-            if r >= threshold:
-                if c.get("filename", "") in cooldown_set and not ban_cooldown and len(top_clips) > 0:
-                    continue
-                top_clips.append((c, reason))
-                
-        clips_only = [c for c, r in top_clips]
-        return clips_only[:10], scored_clips[0][0], top_clips[0][1]
-    return [], 0.0, ""
+    valid_clips.sort(key=lambda x: x[1], reverse=True)
+    unused_clips = [x for x in valid_clips if x[2].get("filename", "") not in cooldown_set]
+
+    if unused_clips:
+        best_pool = unused_clips
+    else:
+        best_pool = valid_clips
+
+    clips_only = [c for s, r, c, reason in best_pool]
+    return clips_only[:10], best_pool[0][1], best_pool[0][3]
 
 
 # ============================================================================
 # Clip Scoring — Semantic Strategy (Three-Channel Architecture)
 # ============================================================================
 
-def match_semantic(segment_text: str, clips: list, show_config: dict,
+def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_config: dict,
                    embedding_model, threshold: float = 3.0,
                    cooldown_set: set = None,
-                   cooldown_penalty: float = -50.0,
-                   dominant_episode_key: str = None,
                    seg_characters: set = None,
                    seg_locations: set = None,
                    ban_cooldown: bool = False) -> tuple:
-    """Find the best clip using Three-Channel Semantic & Visual Scoring.
-    
-    Channel 1: Character Match (visual_characters + ArcFace confidence) [up to 20 pts]
-    Channel 2: Semantic & Visual Vector Embeddings + RAG keyword overlap [up to 15 pts]
-    Channel 3: Contextual Metadata (emotion_tone, mood, location, episode) [up to 10 pts]
-    """
     if cooldown_set is None:
         cooldown_set = set()
-
-    scored_clips = []
 
     if seg_characters is None:
         seg_characters = extract_character_mentions(segment_text, show_config)
@@ -433,156 +417,102 @@ def match_semantic(segment_text: str, clips: list, show_config: dict,
     seg_transforms = _extract_transformation_mentions(segment_text, show_config)
     segment_embedding = embedding_model.encode(segment_text).tolist()
 
-    # CLIP visual matching: encode segment text once if any clip has visual embeddings
-    clip_text_emb = None
-    has_visual = any(c.get("clip_visual_embedding") for c in clips[:50])
-    if has_visual:
-        clip_encoder = _get_clip_text_encoder()
-        if clip_encoder is not None:
-            clip_text_emb = clip_encoder.encode(segment_text).tolist()
-
+    dense_scores = []
     for clip in clips:
         if _is_banned_clip(clip):
+            dense_scores.append(0.0)
             continue
         clip_emb = clip.get("embedding")
         if not clip_emb:
+            dense_scores.append(0.0)
             continue
+        dense_scores.append(cosine_similarity(segment_embedding, clip_emb))
+        
+    try:
+        from scripts.bm25 import reciprocal_rank_fusion
+    except ImportError:
+        try:
+            from bm25 import reciprocal_rank_fusion
+        except ImportError:
+            reciprocal_rank_fusion = lambda d, s, k: d # dummy fallback
+        
+    rrf_scores = reciprocal_rank_fusion(dense_scores, bm25_scores, k=60)
+    intent_weights = classify_intent(segment_text, show_config)
 
-        score = 0.0
-        reason_parts = []
+    scored_clips = []
+    for i, clip in enumerate(clips):
+        if _is_banned_clip(clip):
+            continue
+            
+        base_score = rrf_scores[i] * intent_weights["rrf_scale"]
+        score = base_score
+        reason_parts = [f"RRF: {base_score:.1f}"]
 
-        # ── CHANNEL 1: Character Match Score (up to ~20 pts) ─────────────────
-        clip_characters = _get_clip_characters(clip)
-        proto_dets = clip.get("prototype_detections", {})
-
+        clip_characters = {c.lower() for c in clip.get("characters", [])}
+        char_overlap = seg_characters & clip_characters
         if seg_characters:
-            char_overlap = seg_characters & clip_characters
             if char_overlap:
-                # Base points per character + ArcFace similarity confidence bonus
-                for char in char_overlap:
-                    sim = _get_proto_sim(proto_dets, char)
-                    conf_bonus = 3.0 * sim if sim > 0 else 2.0  # +2.0 default for YOLO confirmed
-                    score += 7.0 + conf_bonus
+                score += len(char_overlap) * intent_weights["char_bonus"]
                 reason_parts.append(f"Chars: {', '.join(char_overlap)}")
             else:
-                # Missing character penalty (soft background rejection)
-                score -= 4.0
-                reason_parts.append("Missing Chars")
+                score -= 5.0
+                reason_parts.append("Missing ALL Chars")
 
-        # Transformation match (alien forms)
         if seg_transforms:
-            clip_transforms = {t.lower() for t in clip.get("transformations", [])} | clip_characters
-            transform_overlap = seg_transforms & clip_transforms
+            clip_transforms = {t.lower() for t in clip.get("transformations", [])}
+            clip_all_chars = clip_characters | clip_transforms
+            transform_overlap = seg_transforms & clip_all_chars
             if transform_overlap:
-                score += len(transform_overlap) * 5.0
+                score += len(transform_overlap) * intent_weights["alien_bonus"]
                 reason_parts.append(f"Alien: {', '.join(transform_overlap)}")
-            elif clip.get("transformations"):
-                score -= 2.0  # Penalty for wrong alien form
-                reason_parts.append("Wrong Alien Form")
+            else:
+                score -= 10.0
+                reason_parts.append(f"Missing Alien")
 
-        # ── CHANNEL 2: Semantic Similarity Score (up to ~15 pts) ─────────────
-        # Text embedding similarity (dialogue / action vector)
-        sim = cosine_similarity(segment_embedding, clip_emb)
-        score += sim * 10.0
-        reason_parts.append(f"Vector Sim: {sim:.2f}")
-
-        # CLIP visual embedding similarity
-        clip_visual_emb = clip.get("clip_visual_embedding")
-        if clip_text_emb is not None and clip_visual_emb:
-            visual_sim = cosine_similarity(clip_text_emb, clip_visual_emb)
-            score += visual_sim * 8.0
-            if visual_sim > 0.2:
-                reason_parts.append(f"Visual: {visual_sim:.2f}")
-
-        # Visual description & raw vision LLM narration overlap
-        vis_desc = clip.get("visual_description", "").lower()
-        raw_vis = clip.get("raw_vision", "").lower()
-        vis_text = f"{vis_desc} {raw_vis}".strip()
-        if vis_text:
-            vis_overlap = seg_keywords & extract_keywords(vis_text)
-            if vis_overlap:
-                score += len(vis_overlap) * 1.5
-                reason_parts.append(f"VisDesc: {len(vis_overlap)}")
-
-        # Scene context / dialogue overlap
-        scene_ctx = clip.get("scene_context", "").lower()
-        action_text = clip.get("action", "").lower()
-        ctx_text = f"{scene_ctx} {action_text}".strip()
-        if ctx_text:
-            ctx_overlap = seg_keywords & extract_keywords(ctx_text)
-            if ctx_overlap:
-                score += len(ctx_overlap) * 1.5
-                reason_parts.append(f"Dialogue: {len(ctx_overlap)}")
-
-        # Enriched episode summary RAG overlap
-        ep_summary = clip.get("episode_summary", "").lower()
-        if ep_summary:
-            overlap = seg_keywords & extract_keywords(ep_summary)
-            if overlap:
-                score += len(overlap) * 1.5
-                reason_parts.append(f"Plot Overlap: {len(overlap)}")
-
-        # ── CHANNEL 3: Contextual Metadata Score (up to ~10 pts) ─────────────
-        # Emotion & tone matching
-        clip_tone = clip.get("emotion_tone", "").lower().strip()
-        if clip_tone and clip_tone in _TONE_KEYWORDS:
-            if seg_keywords & _TONE_KEYWORDS[clip_tone] or clip_tone in seg_keywords:
-                score += 2.0
-                reason_parts.append(f"Tone: {clip_tone}")
-
-        clip_mood = clip.get("mood", "").lower().strip()
-        if clip_mood and (clip_mood in seg_keywords or (clip_mood in _TONE_KEYWORDS and seg_keywords & _TONE_KEYWORDS[clip_mood])):
-            score += 1.5
-            reason_parts.append(f"Mood: {clip_mood}")
-
-        # Location match
         clip_location = clip.get("location", "").lower()
         if clip_location and clip_location in seg_locations:
             score += 2.0
             reason_parts.append(f"Loc: {clip_location}")
             
-        # Dominant episode bonus
-        if dominant_episode_key:
-            ep_key, _ = parse_clip_identity(clip.get("filename", ""))
-            if ep_key == dominant_episode_key:
-                score += 2.0
-                reason_parts.append("Dominant Ep")
+        ep_summary = clip.get("episode_summary", "").lower()
+        if ep_summary:
+            ep_keywords = extract_keywords(ep_summary)
+            overlap = seg_keywords & ep_keywords
+            score += len(overlap) * intent_weights["plot_bonus"]
+            if overlap:
+                reason_parts.append(f"Plot Overlap: {len(overlap)}")
 
-        # Visual tags overlap (YOLO object detection)
-        visual_tags = {str(t).lower() for t in clip.get("visual_tags", [])}
-        tags = {str(t).lower() for t in clip.get("tags", [])}
-        all_tags = visual_tags | tags
-        if all_tags:
-            tag_overlap = seg_keywords & all_tags
-            if tag_overlap:
-                score += len(tag_overlap) * 1.0
-                reason_parts.append(f"Tags: {', '.join(tag_overlap)}")
+        visual_tags = {t.lower() for t in clip.get("visual_tags", [])}
+        if visual_tags:
+            vtag_overlap = seg_keywords & visual_tags
+            score += len(vtag_overlap) * 1.0
+            if vtag_overlap:
+                reason_parts.append(f"VisTags: {', '.join(vtag_overlap)}")
 
         raw_score = score
         reason = " | ".join(reason_parts)
 
-        # Apply cooldown penalty
         if clip.get("filename", "") in cooldown_set:
             if ban_cooldown:
                 continue
-            score = (score * 0.01) - 0.001
-            reason += " [COOLDOWN PENALTY]"
+            reason += " [PREVIOUSLY USED]"
 
         scored_clips.append((score, raw_score, clip, reason))
 
-    scored_clips.sort(key=lambda x: x[0], reverse=True)
+    valid_clips = [x for x in scored_clips if x[1] >= threshold]
+    if not valid_clips:
+        return [], 0.0, ""
 
-    if scored_clips and scored_clips[0][1] >= threshold:
-        top_clips = []
-        for s, r, c, reason in scored_clips:
-            if r >= threshold:
-                if c.get("filename", "") in cooldown_set and not ban_cooldown and len(top_clips) > 0:
-                    continue
-                top_clips.append((c, reason))
-        
-        clips_only = [c for c, r in top_clips]
-        return clips_only[:10], scored_clips[0][0], top_clips[0][1]
-    return [], 0.0, ""
+    valid_clips.sort(key=lambda x: x[1], reverse=True)
+    unused_clips = [x for x in valid_clips if x[2].get("filename", "") not in cooldown_set]
+
+    if unused_clips:
+        best_pool = unused_clips
+    else:
+        best_pool = valid_clips
+
+    clips_only = [c for s, r, c, reason in best_pool]
+    return clips_only[:10], best_pool[0][1], best_pool[0][3]
 
 
 # ============================================================================
@@ -714,23 +644,37 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
         log.warning("Too few clips after duration filter, using all %d clips", len(clips))
         eligible_clips = [c for c in clips if not _is_banned_clip(c)]
 
-    # Global Episode Affinity
-    full_script = " ".join(seg.get("text", "") for seg in caption_data.get("segments", []))
-    dominant_episode_key = calculate_dominant_episode(full_script, clips)
-    if dominant_episode_key:
-        log.info("Dominant episode detected: %s", dominant_episode_key)
-
+    # Global Episode Affinity has been deprecated in favor of dynamic intent routing and RRF.
     manifest_segments = []
     stats = {"matched": 0, "fallback": 0, "total": 0, "adjacent_used": 0}
 
-    cooldown_window = deque(maxlen=cooldown_size)
+    # --- BM25 Initialization ---
+    try:
+        from scripts.bm25 import SimpleBM25
+    except ImportError:
+        try:
+            from bm25 import SimpleBM25
+        except ImportError:
+            SimpleBM25 = None
+            
+    bm25_index = None
+    if SimpleBM25:
+        bm25_corpus = []
+        for c in eligible_clips:
+            text_parts = []
+            text_parts.extend([ch.lower() for ch in c.get("characters", [])])
+            text_parts.append(c.get("location", "").lower())
+            text_parts.append(c.get("action", "").lower())
+            text_parts.append(c.get("scene_context", "").lower())
+            text_parts.extend([t.lower() for t in c.get("tags", [])])
+            doc_str = " ".join(text_parts)
+            doc_words = re.sub(r"[^a-z0-9\s]", "", doc_str).split()
+            bm25_corpus.append(doc_words)
+        bm25_index = SimpleBM25(bm25_corpus)
+
     cooldown_set = set()
 
     def _push_cooldown(filename: str):
-        if len(cooldown_window) == cooldown_window.maxlen:
-            evicted = cooldown_window[0]
-            cooldown_set.discard(evicted)
-        cooldown_window.append(filename)
         cooldown_set.add(filename)
 
     active_characters = set()
@@ -769,12 +713,15 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                     strategy = "keyword"
 
             if strategy == "semantic":
+                bm25_scores = [0.0] * len(eligible_clips)
+                if bm25_index:
+                    query_words = re.sub(r"[^a-z0-9\s]", "", seg_text.lower()).split()
+                    bm25_scores = bm25_index.get_scores(query_words)
+
                 best_clips, score, reason = match_semantic(
-                    seg_text, eligible_clips, show_config,
+                    seg_text, eligible_clips, bm25_scores, show_config,
                     build_manifest.embedding_model, threshold=3.0,
                     cooldown_set=cooldown_set,
-                    cooldown_penalty=cooldown_penalty,
-                    dominant_episode_key=dominant_episode_key,
                     seg_characters=active_characters,
                     seg_locations=active_locations,
                 )
@@ -785,8 +732,6 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                 best_clips, score, reason = match_keyword(
                     seg_text, eligible_clips, show_config, threshold,
                     cooldown_set=cooldown_set,
-                    cooldown_penalty=cooldown_penalty,
-                    dominant_episode_key=dominant_episode_key,
                     seg_characters=active_characters,
                     seg_locations=active_locations,
                 )
@@ -794,56 +739,11 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             best_clips, score, reason = match_keyword(
                 seg_text, eligible_clips, show_config, threshold,
                 cooldown_set=cooldown_set,
-                cooldown_penalty=cooldown_penalty,
-                dominant_episode_key=dominant_episode_key,
                 seg_characters=active_characters,
                 seg_locations=active_locations,
             )
 
-        # --- Adjacency fallback & Repetition Prevention ---
         best_clip = best_clips[0] if best_clips else None
-        if (best_clip is not None
-                and best_clip.get("filename", "") in cooldown_set):
-            adj_clip = None
-            if prefer_adjacent:
-                adjacent = find_adjacent_clips(
-                    best_clip, eligible_clips, cooldown_set, max_distance=30,
-                )
-                if adjacent:
-                    adj_clip, dist = adjacent[0]
-                    log.info(
-                        "Segment %d: swapped cooldown clip '%s' -> adjacent '%s' (dist=%d)",
-                        seg_id, best_clip.get("filename", "?"),
-                        adj_clip.get("filename", "?"), dist,
-                    )
-                    stats["adjacent_used"] += 1
-                    reason = f"Adjacent to Cooldown Clip ({dist} scenes)"
-            
-            if adj_clip:
-                best_clip = adj_clip
-                best_clips[0] = adj_clip
-            else:
-                log.info("Segment %d: adjacency failed, banning cooldown clips to prevent repetition.", seg_id)
-                if strategy == "semantic":
-                    best_clips, score, reason = match_semantic(
-                        seg_text, eligible_clips, show_config,
-                        build_manifest.embedding_model, threshold=3.0,
-                        cooldown_set=cooldown_set,
-                        dominant_episode_key=dominant_episode_key,
-                        seg_characters=active_characters,
-                        seg_locations=active_locations,
-                        ban_cooldown=True,
-                    )
-                else:
-                    best_clips, score, reason = match_keyword(
-                        seg_text, eligible_clips, show_config, threshold,
-                        cooldown_set=cooldown_set,
-                        dominant_episode_key=dominant_episode_key,
-                        seg_characters=active_characters,
-                        seg_locations=active_locations,
-                        ban_cooldown=True,
-                    )
-                best_clip = best_clips[0] if best_clips else None
 
         # --- Build manifest entry ---
         entry = {

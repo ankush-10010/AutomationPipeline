@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from collections import defaultdict
 from ultralytics import YOLO
+from tqdm import tqdm
 
 # ── Aggregation Thresholds (Same as inference script) ──────────
 CLEAR_APPEARANCE_THRESHOLD = 0.85
@@ -117,21 +118,22 @@ def main():
         temp_path.replace(index_path)
 
     try:
-        for i, clip in enumerate(clips_to_process, 1):
+        pbar = tqdm(clips_to_process, desc="Detecting Characters (YOLO)", unit="clip")
+        for i, clip in enumerate(pbar, 1):
             video_path = Path(clip["filepath"])
             if not video_path.exists():
-                print(f"[{i}/{len(clips_to_process)}] SKIPPING (File not found): {video_path}")
                 continue
 
-            print(f"[{i}/{len(clips_to_process)}] Analyzing {clip['filename']}... ", end="", flush=True)
+            pbar.set_postfix(file=clip['filename'][:15])
             
             detected_chars = classify_clip(model, video_path)
             
-            # OVERWRITE the old garbage characters with the true YOLO ones
             clip["characters"] = detected_chars
             clip["yolo_tagged"] = True  
             
-            print(f"Result: {detected_chars}")
+            if detected_chars:
+                pbar.write(f"✅ Found {detected_chars} in {clip['filename']}")
+            
             
             # Save every 50 clips to prevent huge disk I/O bottlenecks
             if i % 50 == 0:

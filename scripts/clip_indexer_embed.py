@@ -1,6 +1,7 @@
 import json
 import argparse
 from pathlib import Path
+from tqdm import tqdm
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -41,23 +42,19 @@ def main():
     print(f"Generating semantic embeddings for {len(clips)} clips...")
     
     count = 0
-    for clip in clips:
+    pbar = tqdm(clips, desc="Embedding Sentences", unit="clip")
+    for clip in pbar:
         if "embedding" in clip and not args.force:
             continue
             
-        # Create a rich text representation of the clip
         chars = ", ".join(clip.get("characters", []))
         action = clip.get("action", "")
         
         text_to_embed = f"Characters: {chars}. Dialogue/Action: {action}"
         
-        # Convert text into a 384-dimensional mathematical vector
         vector = model.encode(text_to_embed).tolist()
         clip["embedding"] = vector
         count += 1
-        
-        if count % 50 == 0:
-            print(f"  Embedded {count}/{len(clips)} clips...")
 
     # Save the embeddings directly back into the JSON
     print("Saving updated clip_index.json...")
