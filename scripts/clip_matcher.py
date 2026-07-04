@@ -252,6 +252,32 @@ def cosine_similarity(v1, v2):
     return dot_product / (norm1 * norm2)
 
 
+_ALIEN_REFERENCE_PROMPTS = {
+    "heatblast": "a photo of Heatblast, a flaming fire alien superhero made of magma and rocks",
+    "four arms": "a photo of Four Arms, a giant red four-armed muscular alien superhero",
+    "xlr8": "a photo of XLR8, a blue and black armored dinosaur-like speed alien with wheels on his feet",
+    "diamondhead": "a photo of Diamondhead, a crystalline green shard alien made of living crystals",
+    "stinkfly": "a photo of Stinkfly, a giant winged insectoid alien superhero with four eyes",
+    "upgrade": "a photo of Upgrade, a biomechanical black and green techno-organic alien biomech",
+    "cannonbolt": "a photo of Cannonbolt, a bulky white and yellow armored rolling sphere alien",
+    "wildmutt": "a photo of Wildmutt, an orange beast-like dog alien with no eyes and sharp teeth"
+}
+
+def _get_alien_visual_similarity(clip: dict, alien_name: str) -> float:
+    """Calculate CLIP visual similarity against static alien reference phrases."""
+    clip_vis = clip.get("clip_visual_embedding")
+    if not clip_vis or alien_name.lower() not in _ALIEN_REFERENCE_PROMPTS:
+        return 0.0
+    
+    encoder = _get_clip_text_encoder()
+    if not encoder:
+        return 0.0
+        
+    ref_text = _ALIEN_REFERENCE_PROMPTS[alien_name.lower()]
+    ref_emb = encoder.encode(ref_text).tolist()
+    return cosine_similarity(ref_emb, clip_vis)
+
+
 def _get_clip_text_encoder():
     """Lazily load CLIP text encoder for visual embedding matching."""
     if not hasattr(_get_clip_text_encoder, "_model"):
@@ -417,6 +443,13 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
     seg_transforms = _extract_transformation_mentions(segment_text, show_config)
     segment_embedding = embedding_model.encode(segment_text).tolist()
 
+    missing_embeddings = sum(1 for c in clips if not c.get("embedding"))
+    if missing_embeddings > 0:
+        log.warning(
+            f"[Coverage Warning] {missing_embeddings}/{len(clips)} clips lack semantic embeddings. "
+            "These clips will rely entirely on character, keyword, and subtitle matching."
+        )
+
     dense_scores = []
     for clip in clips:
         if _is_banned_clip(clip):
@@ -448,15 +481,25 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
         score = base_score
         reason_parts = [f"RRF: {base_score:.1f}"]
 
-        clip_characters = {c.lower() for c in clip.get("characters", [])}
-        char_overlap = seg_characters & clip_characters
+        clip_visual_chars = {c.lower() for c in clip.get("visual_characters", [])}
+        clip_text_chars = {c.lower() for c in clip.get("characters", [])}
+        clip_characters = clip_visual_chars | clip_text_chars
+
         if seg_characters:
+            char_overlap = seg_characters & clip_characters
+            has_ground_truth = bool(clip.get("prototype_detections") or clip.get("visual_characters"))
             if char_overlap:
-                score += len(char_overlap) * intent_weights["char_bonus"]
+                for char in char_overlap:
+                    proto_dets = clip.get("prototype_detections", {})
+                    sim = _get_proto_sim(proto_dets, char)
+                    conf_bonus = 3.0 * sim if sim > 0 else 2.0
+                    score += intent_weights["char_bonus"] + conf_bonus
                 reason_parts.append(f"Chars: {', '.join(char_overlap)}")
-            else:
+            elif has_ground_truth:
                 score -= 5.0
-                reason_parts.append("Missing ALL Chars")
+                reason_parts.append("Visual Absence Verified")
+            else:
+                reason_parts.append("Char Data Missing/Neutral")
 
         if seg_transforms:
             clip_transforms = {t.lower() for t in clip.get("transformations", [])}
@@ -466,8 +509,40 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
                 score += len(transform_overlap) * intent_weights["alien_bonus"]
                 reason_parts.append(f"Alien: {', '.join(transform_overlap)}")
             else:
-                score -= 10.0
-                reason_parts.append(f"Missing Alien")
+                alien_sim_total = 0.0
+                for alien_name in seg_transforms:
+                    alien_sim_total += _get_alien_visual_similarity(clip, alien_name)
+                
+                if alien_sim_total > 0.25:
+                    score += alien_sim_total * intent_weights["alien_bonus"]
+                    reason_parts.append(f"CLIP Alien Sim: {alien_sim_total:.2f}")
+                elif has_ground_truth:
+                    score -= 10.0
+                    reason_parts.append(f"Missing Alien Verified")
+                else:
+                    reason_parts.append("Alien Data Missing/Neutral")
+
+        # Subtitle & Dialogue Alignment Score
+        clip_subtitles = clip.get("subtitles", "").strip().lower()
+        seg_text_clean = segment_text.strip().lower()
+        
+        if clip_subtitles and len(clip_subtitles) > 8:
+            if clip_subtitles in seg_text_clean or seg_text_clean in clip_subtitles:
+                score += 15.0 * (intent_weights["rrf_scale"] / 100.0)
+                reason_parts.append("Literal Quote Match")
+            else:
+                sub_words = set(extract_keywords(clip_subtitles))
+                if seg_keywords & sub_words:
+                    overlap_cnt = len(seg_keywords & sub_words)
+                    score += overlap_cnt * 2.5 * (intent_weights["rrf_scale"] / 100.0)
+                    reason_parts.append(f"Dialogue Overlap: {overlap_cnt}")
+
+        sub_emb = clip.get("subtitle_embedding")
+        if sub_emb and segment_embedding:
+            sub_sim = cosine_similarity(segment_embedding, sub_emb)
+            if sub_sim > 0.25:
+                score += sub_sim * 9.0 * (intent_weights["rrf_scale"] / 100.0)
+                reason_parts.append(f"Sub Vector Sim: {sub_sim:.2f}")
 
         clip_location = clip.get("location", "").lower()
         if clip_location and clip_location in seg_locations:
