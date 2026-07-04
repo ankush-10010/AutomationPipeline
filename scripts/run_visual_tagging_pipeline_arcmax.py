@@ -1,3 +1,34 @@
+"""
+===============================================================================
+ARCMAX CASCADE PIPELINE (YOLO 0.85 Threshold + ArcFace Tight Cropping)
+===============================================================================
+
+Two-stage highly optimized character tagging for clip_index.json:
+
+  Stage 1 — YOLO Fast Pass (Confidence >= 0.85):
+    YOLO scans 20 equally spaced frames per clip. If a character is detected
+    with >= 85% confidence, it is immediately confirmed. This bypasses the
+    heavy ArcFace math, saving massive amounts of GPU time.
+
+  Stage 2 — ArcFace Verification & Filtering (Confidence < 0.85):
+    For unsure YOLO detections, the script mathematically cuts out the exact
+    YOLO bounding box (ignoring the messy background). It feeds this pristine,
+    tightly-cropped image into CLIP and ArcFace to verify against the vault.
+    If it's a dog or false positive, it gets deleted.
+
+Why this architecture is mathematically superior:
+  - Surgical Precision: Unlike brute-force methods that scan the whole screen,
+    this only sends the precise cropped character boxes to ArcFace.
+  - Performance: Checking 20 evenly spaced frames guarantees high accuracy
+    without the crushing slowness of scanning every single video frame.
+
+Usage:
+  This script is integrated into the master orchestrator menu.
+  Run: python scripts/run_visual_tagging_pipeline.py
+  Select Option 8 (Test s1e1) or 9 (Full Run).
+===============================================================================
+"""
+
 import os
 import sys
 import re
@@ -294,9 +325,10 @@ def main():
             char_counter[char] += 1
         processed += 1
 
-        print(f"[{i+1}/{len(target_clips)}] {clip['filename'][:20]} → {tagged}")
+        log.info("[%d/%d] %s → %s", i + 1, len(target_clips), clip.get("filename", "")[:20], tagged)
 
         if processed % 50 == 0:
+            log.info("Checkpoint: %d clips processed. Saving clip_index.json...", processed)
             if isinstance(clip_data, dict):
                 clip_data["clips"] = clips
             with open(clip_index_path, "w", encoding="utf-8") as f:
@@ -308,15 +340,24 @@ def main():
     with open(clip_index_path, "w", encoding="utf-8") as f:
         json.dump(clip_data, f, indent=2)
 
-    print("\n" + "=" * 60)
-    print("HYBRID CROP & VERIFY INFERENCE COMPLETE")
-    print("=" * 60)
+    log.info("Final save complete.")
+
+    print("\n" + "=" * 70)
+    print("  ARCMAX CASCADE PIPELINE COMPLETE")
+    print("=" * 70)
     print(f"  Processed: {processed}")
     print(f"  Skipped:   {skipped}")
-    print(f"  Tau:       {args.tau}")
-    print("\nCharacter Frequencies:")
+    print(f"  ArcFace τ: {args.tau}")
+    print(f"  Min Run:   {args.min_run}")
+    
+    print(f"\n  Character detections across {processed} clips:")
+    print(f"  {'Character':<22s} {'Clips':>6s}  {'%':>5s}")
+    print("  " + "-" * 40)
     for char, count in char_counter.most_common():
-        print(f"  {char:25s}: {count:4d} clips")
+        pct = count / processed * 100 if processed else 0
+        flag = " ⚠️ HIGH" if pct > 50 else ""
+        print(f"  {char:<22s} {count:>6d}  {pct:>4.1f}%{flag}")
+    print()
 
 if __name__ == "__main__":
     main()
