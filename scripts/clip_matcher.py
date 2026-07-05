@@ -83,10 +83,12 @@ def extract_character_mentions(text: str, show_config: dict) -> set:
     """Extract character names/aliases mentioned in the text."""
     text_lower = text.lower()
     mentions = set()
-    for char in show_config.get("characters", []):
-        for name in [char["name"]] + char.get("aliases", []):
-            if name.lower() in text_lower:
-                mentions.add(name.lower())
+    for char in (show_config.get("characters") or []):
+        if not isinstance(char, dict):
+            continue
+        for name in [char.get("name", "")] + (char.get("aliases") or []):
+            if name and str(name).lower() in text_lower:
+                mentions.add(str(name).lower())
     return mentions
 
 
@@ -94,11 +96,13 @@ def _extract_transformation_mentions(text: str, show_config: dict) -> set:
     """Extract alien transformation names from text using show_config aliases."""
     text_lower = text.lower()
     mentions = set()
-    for char in show_config.get("characters", []):
-        if char.get("name", "") != "Ben Tennyson":
+    for char in (show_config.get("characters") or []):
+        if not isinstance(char, dict) or char.get("name", "") != "Ben Tennyson":
             continue
-        for alias in char.get("aliases", []):
-            clean = alias.strip()
+        for alias in (char.get("aliases") or []):
+            if not alias:
+                continue
+            clean = str(alias).strip()
             if clean.lower() not in ("ben",) and len(clean) > 2:
                 if re.search(rf"\b{re.escape(clean.lower())}\b", text_lower):
                     mentions.add(clean.lower())
@@ -109,9 +113,9 @@ def extract_location_mentions(text: str, show_config: dict) -> set:
     """Extract location references from the text."""
     text_lower = text.lower()
     mentions = set()
-    for loc in show_config.get("locations", []):
-        if loc.lower() in text_lower:
-            mentions.add(loc.lower())
+    for loc in (show_config.get("locations") or []):
+        if loc and str(loc).lower() in text_lower:
+            mentions.add(str(loc).lower())
     return mentions
 
 
@@ -119,9 +123,9 @@ def extract_theme_mentions(text: str, show_config: dict) -> set:
     """Extract theme references from the text."""
     text_lower = text.lower()
     mentions = set()
-    for theme in show_config.get("themes", []):
-        if theme.lower() in text_lower:
-            mentions.add(theme.lower())
+    for theme in (show_config.get("themes") or []):
+        if theme and str(theme).lower() in text_lower:
+            mentions.add(str(theme).lower())
     return mentions
 
 
@@ -144,7 +148,7 @@ def find_adjacent_clips(clip: dict, clips: list, used_filenames: set,
     Returns a list of (clip, distance) tuples sorted by distance,
     excluding clips already in the used set.
     """
-    ep_key, scene_num = parse_clip_identity(clip.get("filename", ""))
+    ep_key, scene_num = parse_clip_identity(clip.get("filename") or "")
     if ep_key is None:
         return []
 
@@ -152,9 +156,9 @@ def find_adjacent_clips(clip: dict, clips: list, used_filenames: set,
     for c in clips:
         if _is_banned_clip(c):
             continue
-        if c.get("filename", "") in used_filenames:
+        if (c.get("filename") or "") in used_filenames:
             continue
-        c_ep, c_scene = parse_clip_identity(c.get("filename", ""))
+        c_ep, c_scene = parse_clip_identity(c.get("filename") or "")
         if c_ep == ep_key and c_scene is not None and c_scene != scene_num:
             dist = abs(c_scene - scene_num)
             if dist <= max_distance:
@@ -166,10 +170,10 @@ def find_adjacent_clips(clip: dict, clips: list, used_filenames: set,
 
 def _is_banned_clip(clip: dict) -> bool:
     """Check if a candidate clip is an outro, intro, end credits, or vanity card."""
-    fname = clip.get("filename", "").lower()
-    action = clip.get("action", "").lower()
-    tags = {str(t).lower() for t in clip.get("tags", [])}
-    summary = clip.get("episode_summary", "").lower()
+    fname = (clip.get("filename") or "").lower()
+    action = (clip.get("action") or "").lower()
+    tags = {str(t).lower() for t in (clip.get("tags") or []) if t}
+    summary = (clip.get("episode_summary") or "").lower()
 
     banned_terms = {
         "credits", "outro", "ending credits", "end credits", "theme song",
@@ -237,9 +241,13 @@ def _get_proto_sim(proto_dets: dict, char_name: str) -> float:
 
 def _get_clip_characters(clip: dict) -> set:
     """Get lowercase character set from visual_characters (ArcMax) or fallback to characters."""
-    if "visual_characters" in clip:
-        return {c.lower() for c in clip.get("visual_characters", [])}
-    return {c.lower() for c in clip.get("characters", [])}
+    has_ground_truth = clip.get("yolo_arcface", False) or clip.get("yolo_tagged", False)
+    if has_ground_truth:
+        return {str(c).lower() for c in (clip.get("visual_characters") or []) if c}
+    
+    vis_chars = {str(c).lower() for c in (clip.get("visual_characters") or []) if c}
+    text_chars = {str(c).lower() for c in (clip.get("characters") or []) if c}
+    return vis_chars | text_chars
 
 
 def cosine_similarity(v1, v2):
@@ -308,10 +316,10 @@ def score_clip_keyword(segment_text: str, clip: dict, show_config: dict,
     seg_themes = extract_theme_mentions(segment_text, show_config)
 
     clip_characters = _get_clip_characters(clip)
-    clip_location = clip.get("location", "").lower()
-    clip_action = _normalize(clip.get("action", ""))
-    clip_tags = {str(t).lower() for t in clip.get("tags", [])}
-    visual_tags = {str(t).lower() for t in clip.get("visual_tags", [])}
+    clip_location = (clip.get("location") or "").lower()
+    clip_action = _normalize(clip.get("action") or "")
+    clip_tags = {str(t).lower() for t in (clip.get("tags") or []) if t}
+    visual_tags = {str(t).lower() for t in (clip.get("visual_tags") or []) if t}
 
     # Character overlap (highest weight)
     char_overlap = seg_characters & clip_characters
@@ -323,8 +331,8 @@ def score_clip_keyword(segment_text: str, clip: dict, show_config: dict,
 
     # Action & visual description overlap
     action_words = extract_keywords(clip_action)
-    vis_desc = clip.get("visual_description", "").lower()
-    raw_vis = clip.get("raw_vision", "").lower()
+    vis_desc = (clip.get("visual_description") or "").lower()
+    raw_vis = (clip.get("raw_vision") or "").lower()
     vis_words = extract_keywords(f"{vis_desc} {raw_vis}")
     
     score += len(seg_keywords & action_words) * 2.0
@@ -340,6 +348,8 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
                   cooldown_set: set = None,
                   seg_characters: set = None,
                   seg_locations: set = None,
+                  seg_transforms: set = None,
+                  cooldown_penalty: float = -50.0,
                   ban_cooldown: bool = False) -> tuple:
     """Find the best clip using keyword matching across all visual/text metadata."""
     if cooldown_set is None:
@@ -351,6 +361,8 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
         seg_characters = extract_character_mentions(segment_text, show_config)
     if seg_locations is None:
         seg_locations = extract_location_mentions(segment_text, show_config)
+    if seg_transforms is None:
+        seg_transforms = _extract_transformation_mentions(segment_text, show_config)
 
     for clip in clips:
         if _is_banned_clip(clip):
@@ -358,10 +370,10 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
             
         reason_parts = []
         clip_characters = _get_clip_characters(clip)
-        clip_location = clip.get("location", "").lower()
-        clip_action = _normalize(clip.get("action", ""))
-        clip_tags = {str(t).lower() for t in clip.get("tags", [])}
-        visual_tags = {str(t).lower() for t in clip.get("visual_tags", [])}
+        clip_location = (clip.get("location") or "").lower()
+        clip_action = _normalize(clip.get("action") or "")
+        clip_tags = {str(t).lower() for t in (clip.get("tags") or []) if t}
+        visual_tags = {str(t).lower() for t in (clip.get("visual_tags") or []) if t}
         
         s = 0.0
         
@@ -380,8 +392,8 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
             s += len(action_overlap) * 2.0
             reason_parts.append(f"Action: {', '.join(action_overlap)}")
             
-        vis_desc = clip.get("visual_description", "").lower()
-        raw_vis = clip.get("raw_vision", "").lower()
+        vis_desc = (clip.get("visual_description") or "").lower()
+        raw_vis = (clip.get("raw_vision") or "").lower()
         vis_overlap = seg_keywords & extract_keywords(f"{vis_desc} {raw_vis}")
         if vis_overlap:
             s += len(vis_overlap) * 1.5
@@ -399,9 +411,10 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
         reason = " | ".join(reason_parts)
 
         # Apply cooldown penalty
-        if clip.get("filename", "") in cooldown_set:
+        if (clip.get("filename") or "") in cooldown_set:
             if ban_cooldown:
                 continue
+            s -= abs(cooldown_penalty)
             reason += " [PREVIOUSLY USED]"
 
         scored_clips.append((s, raw_s, clip, reason))
@@ -410,8 +423,8 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
     if not valid_clips:
         return [], 0.0, ""
 
-    valid_clips.sort(key=lambda x: x[1], reverse=True)
-    unused_clips = [x for x in valid_clips if x[2].get("filename", "") not in cooldown_set]
+    valid_clips.sort(key=lambda x: x[0], reverse=True)
+    unused_clips = [x for x in valid_clips if (x[2].get("filename") or "") not in cooldown_set]
 
     if unused_clips:
         best_pool = unused_clips
@@ -419,7 +432,7 @@ def match_keyword(segment_text: str, clips: list, show_config: dict,
         best_pool = valid_clips
 
     clips_only = [c for s, r, c, reason in best_pool]
-    return clips_only[:10], best_pool[0][1], best_pool[0][3]
+    return clips_only[:10], best_pool[0][0], best_pool[0][3]
 
 
 # ============================================================================
@@ -431,6 +444,8 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
                    cooldown_set: set = None,
                    seg_characters: set = None,
                    seg_locations: set = None,
+                   seg_transforms: set = None,
+                   cooldown_penalty: float = -50.0,
                    ban_cooldown: bool = False) -> tuple:
     if cooldown_set is None:
         cooldown_set = set()
@@ -440,8 +455,25 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
     if seg_locations is None:
         seg_locations = extract_location_mentions(segment_text, show_config)
     seg_keywords = extract_keywords(segment_text)
-    seg_transforms = _extract_transformation_mentions(segment_text, show_config)
+    if seg_transforms is None:
+        seg_transforms = _extract_transformation_mentions(segment_text, show_config)
     segment_embedding = embedding_model.encode(segment_text).tolist()
+
+    known_show_chars = {
+        str(name).lower()
+        for char in (show_config.get("characters") or [])
+        for name in [char.get("name") or ""] + (char.get("aliases") or [])
+        if name
+    }
+
+    # Lazily encode segment text using CLIP text encoder for cross-modal visual matching
+    clip_encoder = _get_clip_text_encoder()
+    seg_clip_emb = None
+    if clip_encoder:
+        try:
+            seg_clip_emb = clip_encoder.encode(segment_text).tolist()
+        except Exception as e:
+            log.warning(f"Failed to generate CLIP text embedding for segment: {e}")
 
     missing_embeddings = sum(1 for c in clips if not c.get("embedding"))
     if missing_embeddings > 0:
@@ -481,28 +513,32 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
         score = base_score
         reason_parts = [f"RRF: {base_score:.1f}"]
 
-        clip_visual_chars = {c.lower() for c in clip.get("visual_characters", [])}
-        clip_text_chars = {c.lower() for c in clip.get("characters", [])}
-        clip_characters = clip_visual_chars | clip_text_chars
+        has_ground_truth = clip.get("yolo_arcface", False) or clip.get("yolo_tagged", False)
+        clip_visual_chars = {str(c).lower() for c in (clip.get("visual_characters") or []) if c}
+        clip_text_chars = {str(c).lower() for c in (clip.get("characters") or []) if c}
+        
+        if has_ground_truth:
+            clip_characters = clip_visual_chars
+        else:
+            clip_characters = clip_visual_chars | clip_text_chars
 
         if seg_characters:
             char_overlap = seg_characters & clip_characters
-            has_ground_truth = bool(clip.get("prototype_detections") or clip.get("visual_characters"))
             if char_overlap:
                 for char in char_overlap:
-                    proto_dets = clip.get("prototype_detections", {})
+                    proto_dets = clip.get("prototype_detections") or {}
                     sim = _get_proto_sim(proto_dets, char)
                     conf_bonus = 3.0 * sim if sim > 0 else 2.0
                     score += intent_weights["char_bonus"] + conf_bonus
                 reason_parts.append(f"Chars: {', '.join(char_overlap)}")
-            elif has_ground_truth:
+            elif has_ground_truth and any(c in known_show_chars for c in seg_characters):
                 score -= 5.0
                 reason_parts.append("Visual Absence Verified")
             else:
                 reason_parts.append("Char Data Missing/Neutral")
 
         if seg_transforms:
-            clip_transforms = {t.lower() for t in clip.get("transformations", [])}
+            clip_transforms = {str(t).lower() for t in (clip.get("transformations") or []) if t}
             clip_all_chars = clip_characters | clip_transforms
             transform_overlap = seg_transforms & clip_all_chars
             if transform_overlap:
@@ -516,14 +552,25 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
                 if alien_sim_total > 0.25:
                     score += alien_sim_total * intent_weights["alien_bonus"]
                     reason_parts.append(f"CLIP Alien Sim: {alien_sim_total:.2f}")
-                elif has_ground_truth:
+                elif has_ground_truth and any(a in _ALIEN_REFERENCE_PROMPTS for a in seg_transforms):
                     score -= 10.0
-                    reason_parts.append(f"Missing Alien Verified")
+                    reason_parts.append("Missing Alien Verified")
                 else:
                     reason_parts.append("Alien Data Missing/Neutral")
 
-        # Subtitle & Dialogue Alignment Score
-        clip_subtitles = clip.get("subtitles", "").strip().lower()
+        # General Visual-Semantic Cosine Similarity via CLIP
+        clip_vis_emb = clip.get("clip_visual_embedding")
+        if clip_vis_emb and seg_clip_emb:
+            vis_sim = cosine_similarity(seg_clip_emb, clip_vis_emb)
+            if vis_sim > 0.20:
+                score += vis_sim * 12.0
+                reason_parts.append(f"CLIP Vis Sim: {vis_sim:.2f}")
+
+        # Subtitle, Scene Context & Action Alignment Score (combined without shadowing)
+        sub_val = clip.get("subtitles") or ""
+        ctx_val = clip.get("scene_context") or ""
+        act_val = clip.get("action") or ""
+        clip_subtitles = f"{sub_val} {ctx_val} {act_val}".strip().lower()
         seg_text_clean = segment_text.strip().lower()
         
         if clip_subtitles and len(clip_subtitles) > 8:
@@ -544,12 +591,12 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
                 score += sub_sim * 9.0 * (intent_weights["rrf_scale"] / 100.0)
                 reason_parts.append(f"Sub Vector Sim: {sub_sim:.2f}")
 
-        clip_location = clip.get("location", "").lower()
+        clip_location = (clip.get("location") or "").lower()
         if clip_location and clip_location in seg_locations:
             score += 2.0
             reason_parts.append(f"Loc: {clip_location}")
             
-        ep_summary = clip.get("episode_summary", "").lower()
+        ep_summary = (clip.get("episode_summary") or "").lower()
         if ep_summary:
             ep_keywords = extract_keywords(ep_summary)
             overlap = seg_keywords & ep_keywords
@@ -557,7 +604,26 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
             if overlap:
                 reason_parts.append(f"Plot Overlap: {len(overlap)}")
 
-        visual_tags = {t.lower() for t in clip.get("visual_tags", [])}
+        # Visual Description & Raw Vision scoring pass
+        vis_desc = (clip.get("visual_description") or "").lower()
+        raw_vis = (clip.get("raw_vision") or "").lower()
+        if vis_desc or raw_vis:
+            vis_words = extract_keywords(f"{vis_desc} {raw_vis}")
+            vis_overlap = seg_keywords & vis_words
+            if vis_overlap:
+                score += len(vis_overlap) * 2.0
+                reason_parts.append(f"VisDesc: {len(vis_overlap)}")
+
+        # Emotion & Tone Alignment
+        clip_tone = (clip.get("emotion_tone") or "").lower()
+        if clip_tone and clip_tone in _TONE_KEYWORDS:
+            tone_triggers = _TONE_KEYWORDS[clip_tone]
+            tone_overlap = seg_keywords & tone_triggers
+            if tone_overlap:
+                score += len(tone_overlap) * 2.0
+                reason_parts.append(f"Tone ({clip_tone}): {len(tone_overlap)}")
+
+        visual_tags = {str(t).lower() for t in (clip.get("visual_tags") or []) if t}
         if visual_tags:
             vtag_overlap = seg_keywords & visual_tags
             score += len(vtag_overlap) * 1.0
@@ -567,9 +633,10 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
         raw_score = score
         reason = " | ".join(reason_parts)
 
-        if clip.get("filename", "") in cooldown_set:
+        if (clip.get("filename") or "") in cooldown_set:
             if ban_cooldown:
                 continue
+            score -= abs(cooldown_penalty)
             reason += " [PREVIOUSLY USED]"
 
         scored_clips.append((score, raw_score, clip, reason))
@@ -578,8 +645,8 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
     if not valid_clips:
         return [], 0.0, ""
 
-    valid_clips.sort(key=lambda x: x[1], reverse=True)
-    unused_clips = [x for x in valid_clips if x[2].get("filename", "") not in cooldown_set]
+    valid_clips.sort(key=lambda x: x[0], reverse=True)
+    unused_clips = [x for x in valid_clips if (x[2].get("filename") or "") not in cooldown_set]
 
     if unused_clips:
         best_pool = unused_clips
@@ -587,7 +654,7 @@ def match_semantic(segment_text: str, clips: list, bm25_scores: list, show_confi
         best_pool = valid_clips
 
     clips_only = [c for s, r, c, reason in best_pool]
-    return clips_only[:10], best_pool[0][1], best_pool[0][3]
+    return clips_only[:10], best_pool[0][0], best_pool[0][3]
 
 
 # ============================================================================
@@ -607,12 +674,12 @@ def match_llm(segment_text: str, clips: list, llm_config: dict) -> tuple:
 
     clip_descs = []
     for i, clip in enumerate(clips[:20]):
-        chars = ", ".join(clip.get("visual_characters", clip.get("characters", [])))
-        loc = clip.get("location", "unknown")
-        action = clip.get("action", "")
-        tags = ", ".join(clip.get("tags", []))
+        chars = ", ".join([str(c) for c in (clip.get("visual_characters") or clip.get("characters") or []) if c])
+        loc = clip.get("location") or "unknown"
+        action = clip.get("action") or ""
+        tags = ", ".join([str(t) for t in (clip.get("tags") or []) if t])
         clip_descs.append(
-            f"{i + 1}. [{clip.get('filename', '?')}] "
+            f"{i + 1}. [{(clip.get('filename') or '?')}] "
             f"Characters: {chars} | Location: {loc} | "
             f"Action: {action} | Tags: {tags}"
         )
@@ -754,12 +821,21 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
         bm25_corpus = []
         for c in eligible_clips:
             text_parts = []
-            text_parts.extend([ch.lower() for ch in c.get("characters", [])])
-            text_parts.append(c.get("location", "").lower())
-            text_parts.append(c.get("action", "").lower())
-            text_parts.append(c.get("scene_context", "").lower())
-            text_parts.extend([t.lower() for t in c.get("tags", [])])
-            doc_str = " ".join(text_parts)
+            for k in ["characters", "tags", "visual_characters", "transformations", "visual_tags"]:
+                val = c.get(k) or []
+                if isinstance(val, list):
+                    text_parts.extend([str(x).lower() for x in val if x])
+                elif val:
+                    text_parts.append(str(val).lower())
+            
+            for k in ["location", "action", "scene_context", "visual_description", "raw_vision", "emotion_tone", "mood", "subtitles", "episode_summary"]:
+                val = c.get(k) or ""
+                if isinstance(val, list):
+                    text_parts.extend([str(x).lower() for x in val if x])
+                elif val:
+                    text_parts.append(str(val).lower())
+            
+            doc_str = " ".join([p for p in text_parts if p])
             doc_words = re.sub(r"[^a-z0-9\s]", "", doc_str).split()
             bm25_corpus.append(doc_words)
         bm25_index = SimpleBM25(bm25_corpus)
@@ -771,12 +847,11 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
         if filename not in cooldown_set:
             cooldown_set.append(filename)
 
-    active_characters = set()
-    active_locations = set()
-
-    for seg in caption_data.get("segments", []):
+    for seg in (caption_data.get("segments") or []):
+        active_characters = set()
+        active_locations = set()
         stats["total"] += 1
-        seg_text = seg.get("text", "").strip()
+        seg_text = (seg.get("text") or "").strip()
         seg_id = seg.get("id", stats["total"] - 1)
 
         if not seg_text:
@@ -789,29 +864,39 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             seg_words = set(extract_keywords(seg_text))
             best_overlap = 0
             for section in upstream_metadata:
-                sec_text = section.get("text", "")
+                sec_text = section.get("text") or ""
                 sec_words = set(extract_keywords(sec_text))
                 overlap = len(seg_words & sec_words)
                 if overlap > best_overlap:
                     best_overlap = overlap
-                    seg_meta = section.get("metadata", {})
+                    seg_meta = section.get("metadata") or {}
             if best_overlap < 2:
                 seg_meta = {}
 
         current_chars = set()
-        meta_chars = seg_meta.get("characters_present", [])
+        meta_chars = seg_meta.get("characters_present") or []
         if meta_chars:
-            current_chars = {c.lower() for c in meta_chars if c}
+            current_chars = {str(c).lower() for c in meta_chars if c}
         else:
             current_chars = extract_character_mentions(seg_text, show_config)
             
+        seg_transforms = _extract_transformation_mentions(seg_text, show_config)
         meta_alien = seg_meta.get("alien_form")
         if meta_alien and str(meta_alien).lower() != "null":
-            seg_text = f"{seg_text} {meta_alien}"
+            if isinstance(meta_alien, list):
+                seg_transforms.update({str(x).lower() for x in meta_alien if x})
+            else:
+                seg_transforms.add(str(meta_alien).lower())
             
         meta_action = seg_meta.get("action_verb")
+        meta_action_words = set()
         if meta_action and str(meta_action).lower() != "null":
-            seg_text = f"{seg_text} {meta_action}"
+            if isinstance(meta_action, list):
+                for act in meta_action:
+                    if act:
+                        meta_action_words.update(extract_keywords(str(act)))
+            else:
+                meta_action_words.update(extract_keywords(str(meta_action)))
 
         current_locs = extract_location_mentions(seg_text, show_config)
 
@@ -839,6 +924,22 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                 bm25_scores = [0.0] * len(eligible_clips)
                 if bm25_index:
                     query_words = re.sub(r"[^a-z0-9\s]", "", seg_text.lower()).split()
+                    
+                    seg_characters = extract_character_mentions(seg_text, show_config)
+                    
+                    for char in (seg_characters | active_characters):
+                        char_clean = re.sub(r"[^a-z0-9\s]", "", char.lower())
+                        if char_clean:
+                            query_words.extend(char_clean.split() * 3)
+                            
+                    for trans in seg_transforms:
+                        trans_clean = re.sub(r"[^a-z0-9\s]", "", trans.lower())
+                        if trans_clean:
+                            query_words.extend(trans_clean.split() * 3)
+
+                    for act_word in meta_action_words:
+                        query_words.extend([act_word] * 2)
+
                     bm25_scores = bm25_index.get_scores(query_words)
 
                 best_clips, score, reason = match_semantic(
@@ -847,6 +948,8 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                     cooldown_set=cooldown_set,
                     seg_characters=active_characters,
                     seg_locations=active_locations,
+                    seg_transforms=seg_transforms,
+                    cooldown_penalty=cooldown_penalty,
                 )
 
         if strategy == "llm" and eligible_clips:
@@ -857,6 +960,8 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                     cooldown_set=cooldown_set,
                     seg_characters=active_characters,
                     seg_locations=active_locations,
+                    seg_transforms=seg_transforms,
+                    cooldown_penalty=cooldown_penalty,
                 )
         elif strategy == "keyword" and eligible_clips:
             best_clips, score, reason = match_keyword(
@@ -864,6 +969,8 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
                 cooldown_set=cooldown_set,
                 seg_characters=active_characters,
                 seg_locations=active_locations,
+                seg_transforms=seg_transforms,
+                cooldown_penalty=cooldown_penalty,
             )
 
         best_clip = best_clips[0] if best_clips else None
@@ -874,25 +981,18 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             "text": seg_text,
             "start": seg.get("start", 0.0),
             "end": seg.get("end", 0.0),
-            "words": seg.get("words", []),
+            "words": seg.get("words") or [],
         }
 
         if best_clip is not None:
-            clip_filename = best_clip.get("filename", "")
+            clip_filename = best_clip.get("filename") or ""
             entry["visual_type"] = "clip"
             entry["visual_source"] = clip_filename
-            entry["visual_sources"] = [c.get("filename", "") for c in best_clips]
+            entry["visual_sources"] = [c.get("filename") or "" for c in best_clips]
             entry["clip_start"] = 0.0
             entry["match_score"] = round(score, 2)
             entry["match_reason"] = reason
             stats["matched"] += 1
-
-            clip_chars = _get_clip_characters(best_clip)
-            clip_loc = best_clip.get("location", "").lower()
-            if clip_chars:
-                active_characters = clip_chars
-            if clip_loc:
-                active_locations = {clip_loc}
 
             _push_cooldown(clip_filename)
 
@@ -904,8 +1004,8 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
             log.info("   -> Segment Text: \"%s\"", seg_text)
             log.info("   -> Match Reason: %s", reason)
             
-            db_action = best_clip.get("action", "").strip()
-            db_tags = ", ".join(best_clip.get("tags", []))
+            db_action = (best_clip.get("action") or "").strip()
+            db_tags = ", ".join([str(t) for t in (best_clip.get("tags") or []) if t])
             if db_action:
                 log.info("   -> DB Action Match: \"%s\"", db_action)
             if db_tags:
@@ -1013,13 +1113,13 @@ def main(argv=None):
     args = parse_args(argv)
 
     pipeline_cfg = load_pipeline_config()
-    matching_cfg = pipeline_cfg.get("clip_matching", {})
-    llm_cfg = pipeline_cfg.get("llm", {})
+    matching_cfg = pipeline_cfg.get("clip_matching") or {}
+    llm_cfg = pipeline_cfg.get("llm") or {}
 
     show_slug, show_config = get_active_show(args.show)
-    log.info("Using show: %s (%s)", show_config.get("display_name", "?"), show_slug)
+    log.info("Using show: %s (%s)", show_config.get("display_name") or "?", show_slug)
 
-    strategy = args.strategy or matching_cfg.get("strategy", "semantic")
+    strategy = args.strategy or matching_cfg.get("strategy") or "semantic"
     log.info("Matching strategy: %s", strategy)
 
     if args.clip_index:
@@ -1029,7 +1129,7 @@ def main(argv=None):
 
     clip_data = load_json(clip_index_path)
     if isinstance(clip_data, dict):
-        clips = clip_data.get("clips", [])
+        clips = clip_data.get("clips") or []
     elif isinstance(clip_data, list):
         clips = clip_data
     else:

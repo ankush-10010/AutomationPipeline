@@ -136,9 +136,24 @@ def enrich_characters(index_path: Path, show_config: dict):
 
     log.info("Re-embedding %d clips with unified character & action text...", len(clips))
     for i, clip in enumerate(clips, 1):
-        chars_str = ", ".join(clip.get("characters", []))
-        action_str = clip.get("action", "")
-        text_to_embed = f"Characters: {chars_str}. Dialogue/Action: {action_str}"
+        chars_raw = clip.get("characters")
+        chars_str = ", ".join([str(c) for c in chars_raw if c]) if isinstance(chars_raw, list) else ""
+        tone = str(clip.get("emotion_tone") or "").strip()
+        vis_desc = str(clip.get("visual_description") or "").strip()
+        scene_ctx = str(clip.get("scene_context") or "").strip()
+        action_str = str(clip.get("action") or "").strip()
+        tags_raw = clip.get("tags")
+        tags = ", ".join([str(t) for t in tags_raw if t]) if isinstance(tags_raw, list) else ""
+
+        parts = []
+        if chars_str: parts.append(f"Characters: {chars_str}")
+        if tone: parts.append(f"Tone: {tone}")
+        if vis_desc: parts.append(f"Visuals: {vis_desc}")
+        if scene_ctx: parts.append(f"Context: {scene_ctx}")
+        elif action_str: parts.append(f"Dialogue: {action_str}")
+        if tags: parts.append(f"Tags: {tags}")
+
+        text_to_embed = ". ".join(parts)
         clip["embedding"] = model.encode(text_to_embed).tolist()
 
         if i % 50 == 0 or i == len(clips):

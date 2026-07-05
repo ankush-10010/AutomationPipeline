@@ -47,10 +47,33 @@ def main():
         if "embedding" in clip and not args.force:
             continue
             
-        chars = ", ".join(clip.get("characters", []))
-        action = clip.get("action", "")
+        parts = []
         
-        text_to_embed = f"Characters: {chars}. Dialogue/Action: {action}"
+        chars = clip.get("characters")
+        if chars and isinstance(chars, list):
+            parts.append(f"Characters: {', '.join(str(c) for c in chars if c)}")
+            
+        emotion = clip.get("emotion_tone")
+        if emotion and isinstance(emotion, str):
+            parts.append(f"Emotion/Tone: {emotion}")
+            
+        visual = clip.get("visual_description")
+        if visual and isinstance(visual, str):
+            parts.append(f"Visual: {visual}")
+            
+        context = clip.get("scene_context")
+        if context and isinstance(context, str):
+            parts.append(f"Context: {context}")
+            
+        action = clip.get("action")
+        if action and isinstance(action, str):
+            parts.append(f"Action/Dialogue: {action}")
+            
+        tags = clip.get("tags")
+        if tags and isinstance(tags, list):
+            parts.append(f"Tags: {', '.join(str(t) for t in tags if t)}")
+            
+        text_to_embed = ". ".join(parts)
         
         vector = model.encode(text_to_embed).tolist()
         clip["embedding"] = vector
@@ -59,7 +82,7 @@ def main():
     # Save the embeddings directly back into the JSON
     print("Saving updated clip_index.json...")
     with open(index_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
     print("✅ Successfully added semantic embeddings!")
 

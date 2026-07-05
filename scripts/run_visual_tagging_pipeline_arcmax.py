@@ -90,13 +90,27 @@ def extract_frames(video_path: Path, n_frames: int = 20) -> list:
     start = max(1, int(total * 0.10))
     end = max(start + 1, int(total * 0.90))
     indices = np.linspace(start, end, n_frames, dtype=int)
+    indices = sorted(list(set(indices)))
     frames = []
-    for idx in indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
-        ret, frame = cap.read()
-        if ret and frame is not None:
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frames.append(Image.fromarray(rgb))
+    # Small video optimization: read sequentially instead of seeking (OpenCV seeking is very slow)
+    if total < 300:
+        idx_set = set(indices)
+        current_idx = 0
+        while len(frames) < len(indices):
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                break
+            if current_idx in idx_set:
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames.append(Image.fromarray(rgb))
+            current_idx += 1
+    else:
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames.append(Image.fromarray(rgb))
     cap.release()
     return frames
 
@@ -208,14 +222,15 @@ def main():
     log.info("Device: %s", device)
 
     # Load YOLO
-    log.info("Loading YOLO...")
+    log.info("Loading YOLO on device: %s...", device)
     from ultralytics import YOLO
     yolo_model = YOLO(args.weights if args.weights != str(DEFAULT_YOLO_WEIGHTS) else args.yolo)
+    yolo_model.to(device)
     
     # Load CLIP
-    log.info("Loading CLIP ViT-B-32...")
+    log.info("Loading CLIP ViT-B-32 on device: %s...", device)
     from sentence_transformers import SentenceTransformer
-    clip_model = SentenceTransformer("clip-ViT-B-32")
+    clip_model = SentenceTransformer("clip-ViT-B-32", device=device)
 
     # Load ArcFace Projection Head
     log.info("Loading ArcFace Head...")
@@ -283,41 +298,61 @@ def main():
         clip_yolo_tags = set()
         clip_arc_tags = set()
 
-        for frame_pil in frames:
-            # Step 1: YOLO Cascade
-            # direct_matches are > 0.85, crops_to_verify are < 0.85
-            direct_matches, crops_to_verify = process_yolo_results(
-                yolo_model, frame_pil, high_conf=args.cascade_threshold, low_conf=0.25
-            )
+        # Step 1: Run YOLO on all frames as a single batch
+        # This leverages the GPU parallel tensor capabilities
+        yolo_results = yolo_model(frames, verbose=False, conf=0.25, device=device)
+        
+        per_frame_detections = [{} for _ in range(len(frames))]
+        crops_to_verify = []
+        crop_mappings = [] # list of frame indices
+        
+        for frame_idx, result in enumerate(yolo_results):
+            names_dict = result.names
+            boxes = result.boxes
+            frame_pil = frames[frame_idx]
+            w, h = frame_pil.size
             
-            frame_matches = {}
-            
-            # Immediately accept highly confident YOLO predictions
-            for name, conf in direct_matches.items():
-                frame_matches[name] = conf
-                clip_yolo_tags.add(name)
+            for b_idx in range(len(boxes)):
+                box = boxes.xyxy[b_idx].cpu().numpy()
+                conf = float(boxes.conf[b_idx].cpu().numpy())
+                cls_idx = int(boxes.cls[b_idx].cpu().numpy())
+                name = names_dict[cls_idx]
+                
+                # FAST-PATH: YOLO is very confident, bypass ArcFace
+                if conf >= args.cascade_threshold:
+                    if name not in per_frame_detections[frame_idx] or conf > per_frame_detections[frame_idx][name]:
+                        per_frame_detections[frame_idx][name] = conf
+                        clip_yolo_tags.add(name)
+                # SLOW-PATH: YOLO is unsure, crop and send to ArcFace later in batch
+                else:
+                    x1, y1, x2, y2 = map(int, box[:4])
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(w, x2), min(h, y2)
+                    if x2 > x1 and y2 > y1:
+                        crop = frame_pil.crop((x1, y1, x2, y2))
+                        crops_to_verify.append(crop)
+                        crop_mappings.append(frame_idx)
+                        
+        # Step 2: Run CLIP + ArcFace on all low-confidence crops as a single batch
+        if crops_to_verify:
+            clip_embs = clip_model.encode(crops_to_verify, show_progress_bar=False, device=device)
+            norms = np.linalg.norm(clip_embs, axis=1, keepdims=True)
+            norms[norms == 0] = 1
+            clip_embs = clip_embs / norms
 
-            # Step 2: CLIP + ArcFace Verify (Only on low confidence crops)
-            if crops_to_verify:
-                clip_embs = clip_model.encode(crops_to_verify, show_progress_bar=False)
-                norms = np.linalg.norm(clip_embs, axis=1, keepdims=True)
-                norms[norms == 0] = 1
-                clip_embs = clip_embs / norms
+            with torch.no_grad():
+                t = torch.tensor(clip_embs, dtype=torch.float32).to(device)
+                projected = head(t).cpu().numpy()
 
-                with torch.no_grad():
-                    t = torch.tensor(clip_embs, dtype=torch.float32).to(device)
-                    projected = head(t).cpu().numpy()
-
-                for emb in projected:
-                    crop_matches = match_frame_to_prototypes(
-                        emb, prototypes, prototype_labels, class_names, args.tau
-                    )
-                    for name, sim in crop_matches.items():
-                        if name not in frame_matches or sim > frame_matches[name]:
-                            frame_matches[name] = sim
-                            clip_arc_tags.add(name)
-            
-            per_frame_detections.append(frame_matches)
+            for idx, emb in enumerate(projected):
+                frame_idx = crop_mappings[idx]
+                crop_matches = match_frame_to_prototypes(
+                    emb, prototypes, prototype_labels, class_names, args.tau
+                )
+                for name, sim in crop_matches.items():
+                    if name not in per_frame_detections[frame_idx] or sim > per_frame_detections[frame_idx][name]:
+                        per_frame_detections[frame_idx][name] = sim
+                        clip_arc_tags.add(name)
 
         aggregated = aggregate_with_contiguity(per_frame_detections, args.min_run)
         tagged = sorted([name for name, info in aggregated.items() if info["tagged"]])
