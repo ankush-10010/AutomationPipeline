@@ -34,7 +34,7 @@ You MUST structure your script into exactly five psychological retention beats u
 [THE LOOP]
 (30-40s): The cyclical payoff. Deliver the final mind-bending conclusion, but end on a sentence fragment or phrase that grammatically flows directly back into the first word of your [HOOK] ("Did").
 
-NEGATIVE CONSTRAINTS: You are strictly forbidden from announcing your writing process. NEVER say "To construct this script", "Fact 1", or "In conclusion". Speak purely as a confident theorist.
+NEGATIVE CONSTRAINTS: You are strictly forbidden from announcing your writing process. NEVER say "To construct this script", "Fact 1", or "In conclusion". Do NOT output shot directions, camera settings, or JSON metadata like [duration, speed, volume]. Output ONLY the spoken narration text under each act header. Speak purely as a confident theorist.
 
 BANNED VOCABULARY: You are strictly forbidden from using {avoid_phrases}, "delve", "unpack", "realm", "tapestry", "intricate", "shadows", "journey", "we may never know", "only time will tell", "mind-blowing", or any generic YouTuber clichés. Rely on specific nouns, not hyperbolic adjectives.
 

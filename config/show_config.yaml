@@ -13,30 +13,136 @@ shows:
     characters:
       - name: "Ben Tennyson"
         aliases: [
-          "Ben", "Heatblast", "Wildmutt", "Diamondhead", "XLR8", "Grey Matter", "Four Arms", "Stinkfly", "Ripjaws", "Upgrade", "Ghostfreak",
-          "Cannonbolt", "Wildvine", "Upchuck", "Ditto", "Eye Guy", "Way Big", "Spitter", "Buzzshock", "Arctiguana", "Eon", "Blitzwolfer", "Snare-oh", "Frankenstrike",
-          "Swampfire", "Echo Echo", "Humungousaur", "Jetray", "Chromastone", "Brainstorm", "Spidermonkey", "Big Chill", "Goop", "Alien X", "Rath", "Nanomech", "Lodestar",
-          "Water Hazard", "Terraspin", "NRG", "Ampfibian", "Armodrillo", "Clockwork", "Fasttrack", "Chamalien", "Jury Rigg", "Eatle",
-          "Ultimate Swampfire", "Ultimate Echo Echo", "Ultimate Humungousaur", "Ultimate Spidermonkey", "Ultimate Big Chill", "Ultimate Wildmutt", "Ultimate Cannonbolt", "Ultimate Way Big"
+          "Ben", "Ben Prime", "Omnitrix wielder", "Heatblast", "Wildmutt", "Diamondhead", "XLR8", "Grey Matter", "Four Arms", "Stinkfly", "Ripjaws", "Upgrade", "Ghostfreak",
+          "Cannonbolt", "Wildvine", "Upchuck", "Ditto", "Eye Guy", "Way Big", "Spitter", "Buzzshock", "Arctiguana", "Eon", "Benwolf", "Blitzwolfer", "Snare-oh", "Frankenstrike",
+          "Swampfire", "Echo Echo", "Humungousaur", "Jetray", "Chromastone", "Brainstorm", "Spidermonkey", "Big Chill", "Goop", "Alien X", "Rath", "Nanomech", "Lodestar"
         ]
         description: "The wielder of the Omnitrix, heroic but immature teenager."
         visual: "white shirt with black stripe, green jacket, omnitrix on wrist"
       - name: "Gwen Tennyson"
-        aliases: ["Gwen", "Lucky Girl"]
+        aliases: ["Gwen", "Lucky Girl", "Elf Gwen", "Anodite"]
         description: "Ben's intelligent, magic-wielding cousin."
         visual: "orange hair, blue shirt with cat logo"
       - name: "Max Tennyson"
-        aliases: ["Max", "Grandpa Max", "Magister"]
+        aliases: ["Max", "Grandpa Max", "Magister", "Grandpa"]
         description: "Retired Plumber, wise grandfather."
         visual: "old man, red hawaiian shirt"
       - name: "Kevin Levin"
-        aliases: ["Kevin", "Kevin 11"]
-        description: "Reformed rogue, absorbs matter."
+        aliases: ["Kevin", "Kevin 11", "Kevin E. Levin"]
+        description: "Reformed rogue, absorbs matter and energy."
         visual: "black shirt, dark hair, teenager"
       - name: "Vilgax"
-        aliases: ["Vilgax", "Vilgex"]
-        description: "The conqueror of 10 worlds, seeks the Omnitrix."
-        visual: "squid face, cyborg, giant"
+        aliases: ["Vilgax", "Vilgex", "Warlord", "Conqueror of 10 Worlds"]
+        description: "The primary antagonist, cyborg squid warlord obsessed with claiming the Omnitrix."
+        visual: "squid face, cyborg armor, giant muscular green alien"
+      - name: "Dr. Animo"
+        aliases: ["Animo", "Doctor Animo", "Aloysius Animo", "Dr Animo", "D'Void", "Antitrix Animals", "Mutant animals", "mutant creations"]
+        description: "Mad scientist obsessed with genetic mutation and recreating alien DNA."
+        visual: "green skin, lab coat, weird goggles, mutant animals"
+      - name: "Hex"
+        aliases: ["Master Hex", "Magician", "Hex"]
+        description: "Evil sorcerer wielding magical artifacts and the Charms of Bezel."
+        visual: "red robes, pale face with skull markings, staff"
+      - name: "Charmcaster"
+        aliases: ["Charmcaster", "Hope", "Hex's niece", "sorceress"]
+        description: "Skilled magic user and Hex's apprentice/niece."
+        visual: "purple coat, silver hair, magical bag"
+      - name: "Kraab"
+        aliases: ["Kraab", "Crab bounty hunter", "Piscciss Premann"]
+        description: "Cyborg crab alien bounty hunter hired by Vilgax."
+        visual: "orange mechanical crab legs, pincer claws"
+      - name: "Sixsix"
+        aliases: ["Sixsix", "Six-six", "Six Six", "Soterian bounty hunter"]
+        description: "Heavily armored alien bounty hunter with jetpack and laser weapons."
+        visual: "purple armor, helmet, jetpack, wrist blasters"
+      - name: "Ghostfreak"
+        aliases: ["Ghostfreak", "Zs'Skayr", "Ectonurite", "phantom alien"]
+        description: "Ghost alien transformation whose consciousness escaped the Omnitrix."
+        visual: "one eyed ghost, skull face, tentacles, spooky dark alien"
+      - name: "Heatblast"
+        aliases: ["Heatblast", "Blast", "Pyronite", "fire alien"]
+        description: "Ben's fire-based Pyronite alien transformation."
+        visual: "flaming magma body, yellow and red fire"
+      - name: "Wildmutt"
+        aliases: ["Wildmutt", "Vulpimancer", "beast alien"]
+        description: "Eyeless orange canine beast alien with thermal/smell senses."
+        visual: "orange fur, eyeless dog beast, gills on neck"
+      - name: "Diamondhead"
+        aliases: ["Diamondhead", "Petrosapien", "crystal alien"]
+        description: "Crystalline alien who can shoot shards and form crystal shields."
+        visual: "blue-green crystal body, sharp diamond arms, yellow eyes"
+      - name: "XLR8"
+        aliases: ["XLR8", "Kineceleran", "speed alien", "fast alien"]
+        description: "Lightning-fast velociraptor-like alien transformation."
+        visual: "blue and black armor, wheels on feet, visor helmet, tail"
+      - name: "Grey Matter"
+        aliases: ["Grey Matter", "Galvan", "little frog", "smart alien"]
+        description: "Tiny, hyper-intelligent frog-like Galvan alien."
+        visual: "small grey frog alien, big green eyes, white jumpsuit"
+      - name: "Four Arms"
+        aliases: ["Four Arms", "Tetramand", "Four-arms", "strong alien"]
+        description: "Massive four-armed red warrior alien."
+        visual: "red skin, four muscular arms, four eyes, white shirt"
+      - name: "Stinkfly"
+        aliases: ["Stinkfly", "Lepidopterran", "bug alien", "flying insect"]
+        description: "Winged insect alien that shoots goo and flies."
+        visual: "green and black bug alien, four wings, eyestalks"
+      - name: "Ripjaws"
+        aliases: ["Ripjaws", "Piscciss Volann", "fish alien", "aquatic alien"]
+        description: "Aquatic alien with sharp jaws and glowing lure."
+        visual: "mer-folk fish alien, sharp teeth, glowing head lure, fins"
+      - name: "Upgrade"
+        aliases: ["Upgrade", "Galvanic Mechamorph", "techno alien"]
+        description: "Liquid-metal alien that merges with and upgrades technology."
+        visual: "black and green circuit patterns, liquid metal body, one eye"
+      - name: "Cannonbolt"
+        aliases: ["Cannonbolt", "Arburian Pelarota", "rolling alien"]
+        description: "Armored sphere alien that rolls into a devastating wrecking ball."
+        visual: "white and yellow armor shells, round body"
+      - name: "Wildvine"
+        aliases: ["Wildvine", "Florauna", "plant alien", "vine alien"]
+        description: "Plant-based alien with stretchy vine limbs and explosive seeds."
+        visual: "green plant body, one blue eye, flytrap flaps on head"
+      - name: "Benwolf"
+        aliases: ["Benwolf", "Blitzwolfer", "Loban", "werewolf alien"]
+        description: "Werewolf alien transformation with sonic howl."
+        visual: "grey wolf alien, snout, claws, howling"
+      - name: "Snare-oh"
+        aliases: ["Snare-oh", "Benmummy", "Mummy alien", "Thep Khufan"]
+        description: "Mummy alien made of stretchy, indestructible bandages."
+        visual: "mummy bandages, glowing green eyes, pharaoh headdress"
+      - name: "Frankenstrike"
+        aliases: ["Frankenstrike", "Benvicktor", "Frankenstein alien", "Transylian"]
+        description: "Electromagnetically charged Frankenstein-like alien."
+        visual: "large muscular body, tesla coils on back, mechanical stitches"
+      - name: "Upchuck"
+        aliases: ["Upchuck", "Gourmand", "eating alien"]
+        description: "Small alien that eats matter/energy and spits explosive blasts."
+        visual: "green round alien, three tongues, wide mouth"
+      - name: "Ditto"
+        aliases: ["Ditto", "Splixson", "cloning alien"]
+        description: "Small alien that can multiply into unlimited clones."
+        visual: "small black and white alien, three fin-like points on head"
+      - name: "Eye Guy"
+        aliases: ["Eye Guy", "Opticoid", "eye alien"]
+        description: "Alien covered in eyes that shoots energy beams from his chest eye."
+        visual: "muscular alien covered in green eyes, large eye on chest"
+      - name: "Way Big"
+        aliases: ["Way Big", "To'kustar", "giant alien"]
+        description: "Colossal cosmic giant alien transformation."
+        visual: "100 foot tall giant, red and white armor, fin on head"
+      - name: "Buzzshock"
+        aliases: ["Buzzshock", "Megawhatts", "Nosedeenian", "electric battery alien"]
+        description: "Living battery alien that manipulates electricity and duplicates."
+        visual: "small green battery alien, lightning bolt shape"
+      - name: "Azmuth"
+        aliases: ["Azmuth", "Creator of the Omnitrix", "First Thinker"]
+        description: "The genius Galvan creator of the Omnitrix."
+        visual: "old grey Galvan frog, robes, facial hair"
+      - name: "Tetrax"
+        aliases: ["Tetrax", "Tetrax Shard", "Petrosapien bounty hunter"]
+        description: "Diamondhead-species mercenary who becomes Ben's mentor/ally."
+        visual: "blue-green crystal alien in dark space armor"
 
     # -- Locations (used for clip matching) ----------------------------------
     locations:
