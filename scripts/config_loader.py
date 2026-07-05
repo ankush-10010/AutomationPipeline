@@ -134,10 +134,12 @@ def load_json(path: Path) -> Any:
 
 
 def save_json(path: Path, data: Any, indent: int = 2) -> None:
-    """Write *data* as formatted JSON to *path*, creating dirs if needed."""
+    """Write *data* as formatted JSON to *path* atomically using a temporary file."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=indent, ensure_ascii=False)
+    tmp_path.replace(path)
     log.debug("Saved JSON → %s", path)
 
 

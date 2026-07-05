@@ -101,17 +101,9 @@ def main():
         )
 
     # -------------------------------------------------------------------------
-    # STEP 3: YOLO Object Detection
-    # Adds visual_tags using COCO classes.
-    # -------------------------------------------------------------------------
-    run_step(
-        [python_exe, "scripts/clip_indexer_objects.py", "--weights", "yolov8n.pt", "--conf", "0.15"],
-        "YOLO Object Detection (visual_tags)"
-    )
-
-    # -------------------------------------------------------------------------
-    # STEP 4: CLIP Visual Embeddings
+    # STEP 3: CLIP Visual Embeddings
     # Adds clip_visual_embedding for visual-semantic matching.
+    # (Note: YOLO COCO object detection was removed as it generates useless tags for cartoons)
     # -------------------------------------------------------------------------
     run_step(
         [python_exe, "scripts/clip_indexer_clip_embed.py"],
@@ -119,7 +111,7 @@ def main():
     )
 
     # -------------------------------------------------------------------------
-    # STEP 5: Final Enrichment Pass with Re-embedding
+    # STEP 4: Final Enrichment Pass with Re-embedding
     # Re-embeds the text with all the newly added rich metadata.
     # -------------------------------------------------------------------------
     run_step(

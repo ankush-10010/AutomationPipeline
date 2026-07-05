@@ -202,30 +202,40 @@ def rebuild_index(dry_run: bool = False, merge_backup: bool = True):
     srt_count = sum(1 for v in srt_cache.values() if v)
     print(f"   Matched SRT files for {srt_count}/{len(episodes_found)} episodes")
 
-    # ── Step 4: Load old backup for merging ────────────────────────────
+    # ── Step 4: Load old backups for merging ────────────────────────────
     old_backup_map = {}
-    if merge_backup and OLD_BACKUP.exists():
-        print("\n🔄 Step 4: Loading old backup for rich tag merging...")
-        try:
-            with open(OLD_BACKUP, "r", encoding="utf-8") as f:
-                old_data = json.load(f)
-            old_clips = old_data.get("clips", old_data) if isinstance(old_data, dict) else old_data
-            for c in old_clips:
-                old_backup_map[c["filename"]] = c
-            print(f"   Loaded {len(old_backup_map)} clips from old backup")
-        except Exception as e:
-            print(f"   ⚠️ Failed to load old backup: {e}")
+    if merge_backup:
+        print("\n🔄 Step 4: Loading backups for rich tag merging...")
+        for bpath in [OLD_BACKUP, PROJECT_ROOT / "clip_index_pre_rebuild_backup.json"]:
+            if bpath.exists():
+                try:
+                    with open(bpath, "r", encoding="utf-8") as f:
+                        text = f.read()
+                    try:
+                        bdata = json.loads(text)
+                    except Exception:
+                        last_brace = text.rfind("}")
+                        bdata = json.loads(text[:last_brace+1] + "]}") if last_brace != -1 else {}
+                    bclips = bdata.get("clips", bdata) if isinstance(bdata, dict) else bdata
+                    for c in bclips:
+                        if isinstance(c, dict) and "filename" in c:
+                            if c["filename"] not in old_backup_map:
+                                old_backup_map[c["filename"]] = {}
+                            old_backup_map[c["filename"]].update({k: v for k, v in c.items() if v is not None and v != ""})
+                    print(f"   Merged {len(bclips)} clips from {bpath.name} -> total unique: {len(old_backup_map)}")
+                except Exception as e:
+                    print(f"   ⚠️ Failed to load {bpath.name}: {e}")
     else:
-        print("\n⏭️  Step 4: Skipping old backup merge")
+        print("\n⏭️  Step 4: Skipping backup merge")
 
     # ── Step 5: Build fresh index ──────────────────────────────────────
     print("\n🔨 Step 5: Building fresh clip index...")
 
-    # Rich fields to merge from old backup
+    # Rich fields to merge from backups
     MERGE_FIELDS = [
-        "visual_characters", "prototype_detections", "scene_context",
-        "visual_description", "emotion_tone", "clip_visual_embedding",
-        "visual_tags", "yolo_arcface", "transformations", "speakers",
+        "characters", "embedding", "visual_characters", "prototype_detections",
+        "scene_context", "visual_description", "emotion_tone", "clip_visual_embedding",
+        "visual_tags", "yolo_arcface", "yolo_tagged", "transformations", "speakers",
         "raw_vision", "episode_summary",
     ]
 

@@ -314,17 +314,21 @@ def main():
     log.info("Loaded %d clips", len(clips))
 
     # Discover episodes to process
-    ep_pattern = re.compile(r"(s\d+e\d+)", re.IGNORECASE)
+    ep_pattern = re.compile(r"s(\d+)e(\d+)", re.IGNORECASE)
     all_episodes = set()
     for clip in clips:
-        m = ep_pattern.match(clip.get("filename", ""))
+        m = ep_pattern.search(clip.get("filename", ""))
         if m:
-            all_episodes.add(m.group(1).lower())
+            all_episodes.add(f"s{int(m.group(1))}e{int(m.group(2))}")
 
     if args.episode:
-        episodes_to_process = [args.episode.lower()]
+        m_arg = ep_pattern.search(args.episode)
+        if m_arg:
+            episodes_to_process = [f"s{int(m_arg.group(1))}e{int(m_arg.group(2))}"]
+        else:
+            episodes_to_process = [args.episode.lower()]
     else:
-        episodes_to_process = sorted(all_episodes)
+        episodes_to_process = sorted(all_episodes, key=lambda x: (int(x.split('e')[0][1:]), int(x.split('e')[1])))
 
     log.info("Episodes to process: %d", len(episodes_to_process))
 
@@ -334,7 +338,7 @@ def main():
         for srt_path in subtitles_dir.rglob("*.srt"):
             m = ep_pattern.search(srt_path.name)
             if m:
-                srt_files[m.group(1).lower()] = srt_path
+                srt_files[f"s{int(m.group(1))}e{int(m.group(2))}"] = srt_path
 
     log.info("Found %d SRT files", len(srt_files))
 
