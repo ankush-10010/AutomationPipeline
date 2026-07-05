@@ -87,7 +87,9 @@ def extract_character_mentions(text: str, show_config: dict) -> set:
         if not isinstance(char, dict):
             continue
         for name in [char.get("name", "")] + (char.get("aliases") or []):
-            if name and str(name).lower() in text_lower:
+            if name and re.search(rf"\b{re.escape(str(name).lower())}\b", text_lower):
+                if char.get("name", ""):
+                    mentions.add(str(char.get("name", "")).lower())
                 mentions.add(str(name).lower())
     return mentions
 
@@ -240,11 +242,7 @@ def _get_proto_sim(proto_dets: dict, char_name: str) -> float:
 
 
 def _get_clip_characters(clip: dict) -> set:
-    """Get lowercase character set from visual_characters (ArcMax) or fallback to characters."""
-    has_ground_truth = clip.get("yolo_arcface", False) or clip.get("yolo_tagged", False)
-    if has_ground_truth:
-        return {str(c).lower() for c in (clip.get("visual_characters") or []) if c}
-    
+    """Get lowercase character set from visual_characters (ArcMax) and characters (subtitles)."""
     vis_chars = {str(c).lower() for c in (clip.get("visual_characters") or []) if c}
     text_chars = {str(c).lower() for c in (clip.get("characters") or []) if c}
     return vis_chars | text_chars
@@ -798,7 +796,7 @@ def build_manifest(caption_data: dict, clips: list, show_config: dict,
         if state_path.exists():
             state = load_json(state_path)
             if state and "phase_outputs" in state:
-                script_path = state["phase_outputs"].get("script", "")
+                script_path = state["phase_outputs"].get("script_path", "") or state["phase_outputs"].get("script", "")
                 if script_path:
                     meta_path = str(script_path).replace(".txt", ".metadata.json")
                     if Path(meta_path).exists():

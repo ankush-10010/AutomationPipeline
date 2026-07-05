@@ -67,3 +67,5 @@ YOLO_Dataset/
 cluster_metadata.json
 clip_index.json
 test_find_video.py
+run_bypass_verification.py
+test_script_extraction.py
