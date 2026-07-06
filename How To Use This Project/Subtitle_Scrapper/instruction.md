@@ -350,6 +350,4 @@ Check that:
 
 **Built with ❤️ for the Automation Pipeline**
 
-*No subtitle left behind.*
-
 </div>
