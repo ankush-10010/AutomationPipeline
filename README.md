@@ -239,21 +239,67 @@ ffmpeg -version
 ollama list
 ```
 
-### 2. Pipeline Execution Modes
+### 2. Clip Indexing Pipeline (`clip_indexer_allphasesUpdated.py`)
+
+The indexing pipeline takes raw episode MP4s and builds the enriched `clip_index.json`. It runs 6 steps, each addressable by **name** or **number**:
+
+| Step | Name | What It Does |
+|:---:|:---|:---|
+| 1 | `split` | Scene splitter — slices episode MP4 into scene clips |
+| 2 | `subtitle` | Subtitle indexer — aligns SRT dialogue to each clip |
+| 3 | `embed` | Text embeddings — MiniLM-L6-v2 semantic vectors |
+| 4 | `arcmax` | ArcMax cascade — YOLO 0.85 fast-path + ArcFace verification |
+| 5 | `enrich_full` | Full enrichment — LLM scene context + CLIP visual embeddings |
+| 6 | `enrich_chars` | Character enrichment — dialogue alias matching + re-embedding |
 
 ```bash
-# Run complete autonomous production pipeline from a custom concept
-python scripts/orchestrator.py --topic "Why Rick's Portal Gun Changes Everything"
+# ── Full pipeline (all 6 steps) ──────────────────────────────────────
+python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --show ben10
 
-# Execute autonomous batch mining & run pipeline on top queued item
-python scripts/orchestrator.py --phase topic_mine --count 5
-python scripts/orchestrator.py --phase all --auto-approve
+# ── Batch mode (process all episodes in a directory) ─────────────────
+python scripts/clip_indexer_allphasesUpdated.py --batch episodes/ --show ben10
 
-# Dry-run system architecture (Calculates manifest & audit trail without rendering)
-python scripts/orchestrator.py --topic "Evil Morty's Grand Plan" --dry-run
+# ── Resume from a specific step (e.g. ArcMax onward: steps 4,5,6) ───
+python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --start arcmax
+
+# ── Run ONLY specific steps (cherry-pick) ────────────────────────────
+python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --only arcmax,enrich_chars
+
+# ── Skip expensive steps ─────────────────────────────────────────────
+python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --skip enrich_full
+
+# ── Run a numeric range of steps ─────────────────────────────────────
+python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --steps 3-6
+
+# ── Jump from splitting straight to ArcMax (skip subtitles + embed) ──
+python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --only split,arcmax
+
+# ── Run just scene splitting and subtitle tagging ────────────────────
+python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --steps 1-2
+
+# ── Batch mode with custom SRT directory, skip scene splitting ───────
+python scripts/clip_indexer_allphasesUpdated.py --batch episodes/ --show ben10 --srt-dir ben10_subtitles/ --start subtitle
+```
+
+**Step selection priority** (highest first): `--only` > `--steps` > `--start` > `--skip`
+
+### 3. Content Production Pipeline (`orchestrator_noImage_gpuVoice.py`)
+
+Once `clip_index.json` is built, the orchestrator generates finished videos from topic concepts:
+
+```bash
+# Run complete autonomous production pipeline from a custom topic
+python scripts/orchestrator_noImage_gpuVoice.py --topic "Why Ben's Omnitrix is the Most Powerful Device"
+
+# Execute autonomous batch topic mining & run pipeline on top queued item
+python scripts/orchestrator_noImage_gpuVoice.py --phase topic_mine --count 5
+python scripts/orchestrator_noImage_gpuVoice.py --phase all --auto-approve
+
+# Dry-run (prints manifest & audit trail without rendering video)
+python scripts/orchestrator_noImage_gpuVoice.py --topic "Vilgax's Grand Plan" --dry-run
 
 # Recover from an unexpected hardware shutdown or API rate limit
-python scripts/orchestrator.py --resume
+python scripts/orchestrator_noImage_gpuVoice.py --resume
 ```
 
 ---

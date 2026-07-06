@@ -1,36 +1,42 @@
 """
 clip_indexer_allphasesUpdated.py — Master Orchestration Script for Episode Ingestion & Indexing.
 
-Orchestrates the complete 6-step ingestion workflow for single episodes or batches:
-  Step 1: Run scene_splitter.py on the episode MP4 to slice it into scene clips and produce a manifest.
-  Step 2: Run clip_indexer_subtitles.py using the manifest and matching SRT file to tag dialogue.
-  Step 3: Run clip_indexer_embed.py to compute semantic vector embeddings.
-  Step 4: Run clip_indexer_yolo.py to detect visual bounding boxes.
-  Step 5: Run episode_indexer.py on the episode to extract plot summaries and canonical metadata.
-  Step 6: Run enrich_clip_characters.py to unify character tags and update embeddings.
+Orchestrates a 6-step ingestion + enrichment workflow for single episodes or batches.
+Every step can be run, skipped, resumed from, or cherry-picked independently.
+
+Steps:
+  1 (split)        : scene_splitter.py — Slice episode MP4 into scene clips + manifest.
+  2 (subtitle)     : clip_indexer_subtitles.py — Align SRT dialogue to each clip.
+  3 (embed)        : clip_indexer_embed.py — Compute MiniLM-L6-v2 text embeddings.
+  4 (arcmax)       : run_visual_tagging_pipeline_arcmax.py — YOLO 0.85 + ArcFace cascade.
+  5 (enrich_full)  : run_full_enrichment.py — LLM scene context + CLIP visual embeddings.
+  6 (enrich_chars) : enrich_clip_characters.py — Dialogue alias matching + re-embedding.
 
 CLI Execution Examples:
-    # Single episode mode:
-    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --show rick_and_morty
+    # Full pipeline (all 6 steps):
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --show ben10
 
-    # Single episode mode with custom SRT directory:
-    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --show rick_and_morty --srt-dir rick_and_morty_subtitles/Subtitles_Allinone
+    # Resume from step 4 (skip steps 1-3):
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --start arcmax
 
-    # Batch directory mode:
-    python scripts/clip_indexer_allphasesUpdated.py --batch episodes/ --show rick_and_morty
+    # Run only specific steps:
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --only arcmax,enrich_chars
+
+    # Skip expensive steps:
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --skip enrich_full
+
+    # Batch mode with step range:
+    python scripts/clip_indexer_allphasesUpdated.py --batch episodes/ --show ben10 --steps 3-6
 """
 
 import argparse
-import logging
-import os
 import re
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
-# Ensure scripts directory is in sys.path to import shared configuration utilities
 SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -42,50 +48,123 @@ from config_loader import (
     load_pipeline_config,
 )
 
+# ── Step Registry ─────────────────────────────────────────────────────────────
+# Canonical ordered list. Each entry: (number, name, description)
+STEP_REGISTRY = [
+    (1, "split",        "Scene Splitter — slice episode MP4 into clips"),
+    (2, "subtitle",     "Subtitle Indexer — align SRT dialogue to clips"),
+    (3, "embed",        "Text Embeddings — MiniLM-L6-v2 semantic vectors"),
+    (4, "arcmax",       "ArcMax Cascade — YOLO 0.85 fast-path + ArcFace verification"),
+    (5, "enrich_full",  "Full Enrichment — LLM scene context + CLIP visual embeddings"),
+    (6, "enrich_chars", "Character Enrichment — dialogue alias matching + re-embedding"),
+]
 
+STEP_NAMES = [s[1] for s in STEP_REGISTRY]
+STEP_NAME_TO_NUM = {s[1]: s[0] for s in STEP_REGISTRY}
+STEP_NUM_TO_NAME = {s[0]: s[1] for s in STEP_REGISTRY}
+TOTAL_STEPS = len(STEP_REGISTRY)
+
+
+# ── Terminal Colors ───────────────────────────────────────────────────────────
 class Colors:
-    """ANSI escape formatting codes for colored terminal output."""
-    GREEN = "\033[92m"
-    CYAN = "\033[96m"
+    GREEN  = "\033[92m"
+    CYAN   = "\033[96m"
     YELLOW = "\033[93m"
-    RED = "\033[91m"
-    BOLD = "\033[1m"
-    RESET = "\033[0m"
+    RED    = "\033[91m"
+    BOLD   = "\033[1m"
+    DIM    = "\033[2m"
+    RESET  = "\033[0m"
 
 
 def log_info(msg: str) -> None:
-    """Print standard informational message in green."""
     print(f"{Colors.GREEN}[INFO]{Colors.RESET} {msg}")
 
-
 def log_header(msg: str) -> None:
-    """Print prominent section banner in cyan bold."""
     banner = "=" * 70
     print(f"\n{Colors.CYAN}{Colors.BOLD}{banner}\n{msg}\n{banner}{Colors.RESET}")
 
+def log_step(step_num: int, total: int, desc: str) -> None:
+    print(f"\n{Colors.CYAN}{Colors.BOLD}[Step {step_num}/{total}]{Colors.RESET} {Colors.BOLD}{desc}{Colors.RESET}")
 
-def log_step(step_num: int, total_steps: int, desc: str) -> None:
-    """Print workflow step indicator in cyan bold."""
-    print(f"\n{Colors.CYAN}{Colors.BOLD}[Step {step_num}/{total_steps}]{Colors.RESET} {Colors.BOLD}{desc}{Colors.RESET}")
-
+def log_skip(step_num: int, desc: str) -> None:
+    print(f"\n{Colors.DIM}[Step {step_num}] SKIPPED — {desc}{Colors.RESET}")
 
 def log_success(msg: str) -> None:
-    """Print success checkmark message in green."""
     print(f"{Colors.GREEN}✓ {msg}{Colors.RESET}")
 
-
 def log_warning(msg: str) -> None:
-    """Print warning indicator message in yellow."""
     print(f"{Colors.YELLOW}⚠ [WARNING] {msg}{Colors.RESET}")
 
-
 def log_error(msg: str) -> None:
-    """Print error indicator message in red."""
     print(f"{Colors.RED}✗ [ERROR] {msg}{Colors.RESET}", file=sys.stderr)
 
 
+# ── Step Selection Parser ─────────────────────────────────────────────────────
+
+def _resolve_step_token(token: str) -> int:
+    """Convert a step name or number string to its integer step number."""
+    token = token.strip().lower()
+    if token.isdigit():
+        num = int(token)
+        if 1 <= num <= TOTAL_STEPS:
+            return num
+        raise ValueError(f"Step number {num} out of range (1-{TOTAL_STEPS})")
+    if token in STEP_NAME_TO_NUM:
+        return STEP_NAME_TO_NUM[token]
+    raise ValueError(
+        f"Unknown step '{token}'. Valid names: {', '.join(STEP_NAMES)} or numbers 1-{TOTAL_STEPS}"
+    )
+
+
+def parse_step_selection(
+    steps_arg: Optional[str],
+    only_arg: Optional[str],
+    skip_arg: Optional[str],
+    start_arg: Optional[str],
+) -> Set[int]:
+    """Resolve CLI flags into the final set of step numbers to execute.
+
+    Priority (highest first):
+      --only   : run ONLY these steps
+      --steps  : run this range/list (supports '3-6', '1,4,6', 'embed,arcmax')
+      --start  : run from this step to the end
+      --skip   : remove steps from the default full set
+      (none)   : run all steps
+    """
+    # --only takes absolute priority
+    if only_arg:
+        return {_resolve_step_token(t) for t in only_arg.split(",")}
+
+    # --steps supports ranges and comma lists
+    if steps_arg:
+        result: Set[int] = set()
+        for part in steps_arg.split(","):
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                lo_n, hi_n = _resolve_step_token(lo), _resolve_step_token(hi)
+                result.update(range(lo_n, hi_n + 1))
+            else:
+                result.add(_resolve_step_token(part))
+        return result
+
+    # --start sets a floor
+    active = set(range(1, TOTAL_STEPS + 1))
+    if start_arg:
+        floor = _resolve_step_token(start_arg)
+        active = {s for s in active if s >= floor}
+
+    # --skip removes from whatever remains
+    if skip_arg:
+        to_skip = {_resolve_step_token(t) for t in skip_arg.split(",")}
+        active -= to_skip
+
+    return active
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 def parse_season_episode(filename: str) -> Optional[Tuple[int, int]]:
-    """Extract season and episode numbers from filename using standard patterns."""
+    """Extract season and episode numbers from filename."""
     match = re.search(r"[Ss](\d+)[Ee](\d+)", filename)
     if match:
         return int(match.group(1)), int(match.group(2))
@@ -124,7 +203,7 @@ def find_matching_srt(
 
 def run_command(cmd: List[str]) -> None:
     """Execute subprocess command with colored logging and error verification."""
-    log_info(f"Executing command: {' '.join(cmd)}")
+    log_info(f"Executing: {' '.join(cmd)}")
     try:
         subprocess.run(cmd, check=True)
         log_success("Step finished successfully.")
@@ -133,6 +212,8 @@ def run_command(cmd: List[str]) -> None:
         raise err
 
 
+# ── Episode Processor ─────────────────────────────────────────────────────────
+
 def process_episode(
     episode_mp4: Path,
     show_slug: str,
@@ -140,16 +221,23 @@ def process_episode(
     pipeline_cfg: dict,
     srt_dir_arg: Optional[Path],
     weights_path: Path,
+    active_steps: Set[int],
     episode_index: int = 1,
     total_episodes: int = 1,
 ) -> bool:
-    """Execute complete 6-step ingestion workflow for a single episode video file."""
+    """Execute the selected ingestion steps for a single episode."""
     if not episode_mp4.exists():
         log_error(f"Episode video file not found: {episode_mp4}")
         return False
 
-    header_text = f"[Episode {episode_index}/{total_episodes}] Processing: {episode_mp4.name}"
-    log_header(header_text)
+    log_header(f"[Episode {episode_index}/{total_episodes}] Processing: {episode_mp4.name}")
+
+    # Print execution plan
+    log_info("Execution plan:")
+    for num, name, desc in STEP_REGISTRY:
+        marker = f"{Colors.GREEN}▶ RUN {Colors.RESET}" if num in active_steps else f"{Colors.DIM}○ SKIP{Colors.RESET}"
+        print(f"  {marker}  Step {num} ({name}): {desc}")
+    print()
 
     ep_id = parse_season_episode(episode_mp4.name)
     if ep_id:
@@ -168,148 +256,206 @@ def process_episode(
     else:
         log_warning("No matching subtitle file found. Subtitle-dependent steps will be skipped.")
 
+    active_count = len(active_steps)
+    run_idx = 0
+
     try:
-        # Step 1: Scene Splitter
-        log_step(1, 6, "Running scene_splitter.py to slice episode MP4...")
-        cmd1 = [
-            sys.executable,
-            str(SCRIPTS_DIR / "scene_splitter.py"),
-            str(episode_mp4),
-            "--output",
-            str(clips_dir),
-            "--prefix",
-            prefix,
-        ]
-        run_command(cmd1)
-
-        # Step 2: Subtitle Indexer
-        manifest_path = clips_dir / f"{prefix}_manifest.json"
-        log_step(2, 6, "Running clip_indexer_subtitles.py to tag dialogue...")
-        if srt_path and manifest_path.exists():
-            cmd2 = [
+        # ── Step 1: Scene Splitter ────────────────────────────────────
+        if 1 in active_steps:
+            run_idx += 1
+            log_step(run_idx, active_count, "scene_splitter.py — Slicing episode MP4 into scene clips...")
+            run_command([
                 sys.executable,
-                str(SCRIPTS_DIR / "clip_indexer_subtitles.py"),
-                "--manifest",
-                str(manifest_path),
-                "--srt",
-                str(srt_path),
-                "--show",
-                show_slug,
-                "--index",
-                str(clip_index_path),
-            ]
-            run_command(cmd2)
+                str(SCRIPTS_DIR / "scene_splitter.py"),
+                str(episode_mp4),
+                "--output", str(clips_dir),
+                "--prefix", prefix,
+            ])
         else:
-            log_warning("Skipping Step 2 because manifest or SRT file is missing.")
+            log_skip(1, "Scene Splitter")
 
-        # Step 3: Embeddings
-        log_step(3, 6, "Running clip_indexer_embed.py to compute semantic vector embeddings...")
-        cmd3 = [
-            sys.executable,
-            str(SCRIPTS_DIR / "clip_indexer_embed.py"),
-            "--index",
-            str(clip_index_path),
-        ]
-        run_command(cmd3)
+        # ── Step 2: Subtitle Indexer ──────────────────────────────────
+        if 2 in active_steps:
+            run_idx += 1
+            manifest_path = clips_dir / f"{prefix}_manifest.json"
+            log_step(run_idx, active_count, "clip_indexer_subtitles.py — Tagging dialogue...")
+            if srt_path and manifest_path.exists():
+                run_command([
+                    sys.executable,
+                    str(SCRIPTS_DIR / "clip_indexer_subtitles.py"),
+                    "--manifest", str(manifest_path),
+                    "--srt", str(srt_path),
+                    "--show", show_slug,
+                    "--index", str(clip_index_path),
+                ])
+            else:
+                log_warning("Skipping subtitle indexing — manifest or SRT file is missing.")
+        else:
+            log_skip(2, "Subtitle Indexer")
 
-        # Step 4: YOLO Vision Tagging
-        log_step(4, 6, "Running clip_indexer_yolo.py to detect visual bounding boxes...")
-        cmd4 = [
-            sys.executable,
-            str(SCRIPTS_DIR / "clip_indexer_yolo.py"),
-            "--index",
-            str(clip_index_path),
-            "--weights",
-            str(weights_path),
-            "--target-dir",
-            prefix,
-        ]
-        run_command(cmd4)
-
-        # Step 5: Whole Episode Summary Indexer
-        log_step(5, 6, "Running episode_indexer.py on whole episode to extract plot summaries...")
-        if srt_path:
-            cmd5 = [
+        # ── Step 3: Text Embeddings ───────────────────────────────────
+        if 3 in active_steps:
+            run_idx += 1
+            log_step(run_idx, active_count, "clip_indexer_embed.py — MiniLM-L6-v2 text embeddings...")
+            run_command([
                 sys.executable,
-                str(SCRIPTS_DIR / "episode_indexer.py"),
-                "--show",
-                show_slug,
-                "--single",
-                str(srt_path),
-            ]
-            run_command(cmd5)
+                str(SCRIPTS_DIR / "clip_indexer_embed.py"),
+                "--index", str(clip_index_path),
+            ])
         else:
-            log_warning("Skipping Step 5 because matching SRT file is missing.")
+            log_skip(3, "Text Embeddings")
 
-        # Step 6: Character Enrichment & Re-embedding
-        log_step(6, 6, "Running enrich_clip_characters.py to unify character tags and update embeddings...")
-        cmd6 = [
-            sys.executable,
-            str(SCRIPTS_DIR / "enrich_clip_characters.py"),
-            "--index",
-            str(clip_index_path),
-            "--show",
-            show_slug,
-        ]
-        run_command(cmd6)
+        # ── Step 4: ArcMax Cascade (YOLO + ArcFace) ───────────────────
+        if 4 in active_steps:
+            run_idx += 1
+            log_step(run_idx, active_count, "ArcMax Cascade — YOLO 0.85 fast-path + ArcFace verification...")
+            run_command([
+                sys.executable,
+                str(SCRIPTS_DIR / "run_visual_tagging_pipeline_arcmax.py"),
+                "--force",
+                "--episode", prefix,
+                "--show", show_slug,
+                "--weights", str(weights_path),
+            ])
+        else:
+            log_skip(4, "ArcMax Cascade")
 
-        log_success(f"All workflow phases finished successfully for {episode_mp4.name}")
+        # ── Step 5: Full Enrichment ───────────────────────────────────
+        if 5 in active_steps:
+            run_idx += 1
+            log_step(run_idx, active_count, "run_full_enrichment.py — LLM scene context + CLIP visual embeddings...")
+            run_command([
+                sys.executable,
+                str(SCRIPTS_DIR / "run_full_enrichment.py"),
+                "--episode", prefix,
+            ])
+        else:
+            log_skip(5, "Full Enrichment")
+
+        # ── Step 6: Character Enrichment & Re-embedding ───────────────
+        if 6 in active_steps:
+            run_idx += 1
+            log_step(run_idx, active_count, "enrich_clip_characters.py — Dialogue alias matching + re-embedding...")
+            run_command([
+                sys.executable,
+                str(SCRIPTS_DIR / "enrich_clip_characters.py"),
+                "--index", str(clip_index_path),
+                "--show", show_slug,
+            ])
+        else:
+            log_skip(6, "Character Enrichment")
+
+        log_success(f"All selected steps finished for {episode_mp4.name}")
         return True
 
     except Exception as exc:
-        log_error(f"Workflow interrupted during episode ingestion: {exc}")
+        log_error(f"Workflow interrupted: {exc}")
         return False
 
 
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
 def main() -> None:
-    """Parse CLI arguments and coordinate single or batch episode processing."""
+    step_help_lines = "\n".join(
+        f"    {num}  {name:14s}  {desc}" for num, name, desc in STEP_REGISTRY
+    )
+
     parser = argparse.ArgumentParser(
-        description="Master Orchestrator for Complete Episode Ingestion and Indexing",
+        description="Master Orchestrator for Episode Ingestion & Clip Index Enrichment",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-CLI Execution Examples:
-    # Single episode mode:
-    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --show rick_and_morty
+        epilog=f"""
+Available Steps:
+{step_help_lines}
 
-    # Single episode mode with custom SRT directory:
-    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --show rick_and_morty --srt-dir rick_and_morty_subtitles/Subtitles_Allinone
+Step Selection (mutually exclusive priority: --only > --steps > --start > --skip):
+  --only   Run ONLY these steps.              e.g. --only arcmax,enrich_chars
+  --steps  Run a range or comma list.         e.g. --steps 3-6  or  --steps embed,arcmax
+  --start  Resume from this step onward.      e.g. --start arcmax  (runs steps 4,5,6)
+  --skip   Skip specific steps from full run. e.g. --skip enrich_full
 
-    # Batch directory mode:
-    python scripts/clip_indexer_allphasesUpdated.py --batch episodes/ --show rick_and_morty
+Steps can be specified by name or number. Ranges use dash: 2-5
+
+Usage Examples:
+    # Full pipeline (all 6 steps):
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --show ben10
+
+    # Resume from ArcMax (steps 4-6):
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --start arcmax
+
+    # Run ONLY the two visual tagging steps:
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --only arcmax,enrich_chars
+
+    # Skip the expensive LLM enrichment:
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --skip enrich_full
+
+    # Run steps 3 through 6 on a batch:
+    python scripts/clip_indexer_allphasesUpdated.py --batch episodes/ --show ben10 --steps 3-6
+
+    # Run just scene splitting and subtitles:
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --steps 1-2
+
+    # Jump from splitting straight to ArcMax (skip subtitles and embed):
+    python scripts/clip_indexer_allphasesUpdated.py --episode episodes/s1e1.mp4 --only split,arcmax
         """,
     )
 
+    # ── Input selection ───────────────────────────────────────────────
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument(
-        "--episode",
-        type=str,
-        help="Absolute or relative path to a single episode MP4 video file",
+        "--episode", type=str,
+        help="Path to a single episode MP4 video file",
     )
     input_group.add_argument(
-        "--batch",
-        type=str,
+        "--batch", type=str,
         help="Path to a directory containing multiple episode MP4 video files",
     )
 
+    # ── Show and subtitle config ──────────────────────────────────────
     parser.add_argument(
-        "--show",
-        type=str,
-        default=None,
+        "--show", type=str, default=None,
         help="Show slug identifier (default: active show from config)",
     )
     parser.add_argument(
-        "--srt-dir",
-        type=str,
-        default=None,
+        "--srt-dir", type=str, default=None,
         help="Optional directory containing matching .srt subtitle files",
+    )
+
+    # ── Step selection (mutually exclusive priority group) ─────────────
+    step_group = parser.add_mutually_exclusive_group()
+    step_group.add_argument(
+        "--only", type=str, default=None, metavar="STEPS",
+        help="Run ONLY these steps (comma-separated names or numbers)",
+    )
+    step_group.add_argument(
+        "--steps", type=str, default=None, metavar="RANGE",
+        help="Run a range or list of steps (e.g. 3-6, embed,arcmax,enrich_chars)",
+    )
+    step_group.add_argument(
+        "--start", type=str, default=None, metavar="STEP",
+        help="Resume from this step onward (name or number)",
+    )
+    parser.add_argument(
+        "--skip", type=str, default=None, metavar="STEPS",
+        help="Skip these steps (comma-separated). Combinable with --start.",
     )
 
     args = parser.parse_args()
 
+    # ── Resolve step selection ────────────────────────────────────────
+    try:
+        active_steps = parse_step_selection(args.steps, args.only, args.skip, args.start)
+    except ValueError as e:
+        log_error(str(e))
+        sys.exit(1)
+
+    if not active_steps:
+        log_error("No steps selected. Check your --only/--steps/--skip/--start flags.")
+        sys.exit(1)
+
+    # ── Load config ───────────────────────────────────────────────────
     start_time = time.time()
     pipeline_cfg = load_pipeline_config()
     show_slug, show_config = get_active_show(args.show)
-
     srt_dir_arg = Path(args.srt_dir).resolve() if args.srt_dir else None
 
     weights_path = PROJECT_ROOT / "yolo_wt" / "best.pt"
@@ -318,20 +464,24 @@ CLI Execution Examples:
         if candidate_weights:
             weights_path = candidate_weights[0]
         else:
-            log_warning(f"Default YOLO weights file not found at {weights_path}")
+            log_warning(f"YOLO weights not found at {weights_path}")
 
+    # ── Discover episodes ─────────────────────────────────────────────
     episodes_to_process: List[Path] = []
     if args.episode:
-        ep_path = Path(args.episode).resolve()
-        episodes_to_process.append(ep_path)
+        episodes_to_process.append(Path(args.episode).resolve())
     elif args.batch:
         batch_path = Path(args.batch).resolve()
         if not batch_path.exists() or not batch_path.is_dir():
-            log_error(f"Batch directory does not exist or is not a directory: {batch_path}")
+            log_error(f"Batch directory does not exist: {batch_path}")
             sys.exit(1)
-        raw_videos = sorted([p for p in batch_path.rglob("*.*") if p.suffix.lower() in [".mp4", ".mkv"]])
+        raw_videos = sorted(
+            p for p in batch_path.rglob("*.*")
+            if p.suffix.lower() in [".mp4", ".mkv"]
+        )
         episodes_to_process = [
-            p for p in raw_videos if "_scene_" not in p.name and not p.name.startswith(".")
+            p for p in raw_videos
+            if "_scene_" not in p.name and not p.name.startswith(".")
         ]
         log_info(f"Discovered {len(episodes_to_process)} episode video files in batch directory.")
 
@@ -339,36 +489,40 @@ CLI Execution Examples:
         log_error("No episode video files found to process.")
         sys.exit(1)
 
-    succeeded_count = 0
-    failed_count = 0
-    total_count = len(episodes_to_process)
+    # ── Process ───────────────────────────────────────────────────────
+    succeeded = 0
+    failed = 0
+    total = len(episodes_to_process)
 
     for idx, ep_file in enumerate(episodes_to_process, 1):
-        success = process_episode(
+        ok = process_episode(
             episode_mp4=ep_file,
             show_slug=show_slug,
             show_config=show_config,
             pipeline_cfg=pipeline_cfg,
             srt_dir_arg=srt_dir_arg,
             weights_path=weights_path,
+            active_steps=active_steps,
             episode_index=idx,
-            total_episodes=total_count,
+            total_episodes=total,
         )
-        if success:
-            succeeded_count += 1
+        if ok:
+            succeeded += 1
         else:
-            failed_count += 1
+            failed += 1
+            if args.episode:
+                sys.exit(1)
 
-        if not success and args.episode:
-            sys.exit(1)
-
-    elapsed_seconds = time.time() - start_time
+    elapsed = time.time() - start_time
     log_header("WORKFLOW EXECUTION SUMMARY")
-    log_info(f"Total execution time: {round(elapsed_seconds, 2)} seconds")
-    log_info(f"Total episodes scanned: {total_count}")
-    log_info(f"Succeeded ingestion runs: {succeeded_count}")
-    if failed_count > 0:
-        log_warning(f"Failed ingestion runs: {failed_count}")
+    log_info(f"Total execution time : {round(elapsed, 2)} seconds")
+    log_info(f"Episodes processed   : {total}")
+    log_info(f"Succeeded            : {succeeded}")
+    if failed > 0:
+        log_warning(f"Failed               : {failed}")
+    steps_ran = sorted(active_steps)
+    step_names_ran = [STEP_NUM_TO_NAME[s] for s in steps_ran]
+    log_info(f"Steps executed       : {', '.join(step_names_ran)}")
 
 
 if __name__ == "__main__":
