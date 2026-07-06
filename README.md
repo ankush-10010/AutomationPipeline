@@ -57,17 +57,16 @@ flowchart TD
 
     subgraph Phase2 ["2. Knowledge Base — Scrapling + RAG Vectorization"]
         FandomScrape["scrape_fandom.py\n(Scrapling spider → Ben 10 Fandom wiki)"] --> WikiJSON["wiki.json"]
+        FandomScrape --> TheoriesJSON["topics/theories.json"]
         SubSRT["SRT Subtitle Files"] --> ColSub["ChromaDB: subtitles"]
-        EpIdx["episode_indexer.py"] --> ColEp["ChromaDB: episodes"]
         WikiJSON --> ColWiki["ChromaDB: wiki"]
-        TheoriesJSON["topics/theories.json"] --> ColTopic["ChromaDB: theories"]
+        TheoriesJSON --> ColTopic["ChromaDB: theories"]
     end
 
     subgraph Phase3 ["3. Script Generation & Verification Loop"]
         TopicIn["Topic Input"] --> HyDE["HyDE Monologue Expansion"]
         HyDE --> Pull["Multi-Vector ChromaDB Pull"]
         ColSub -.-> Pull
-        ColEp -.-> Pull
         ColWiki -.-> Pull
         ColTopic -.-> Pull
         Pull --> Distiller["Llama Context Distiller"]
@@ -79,8 +78,8 @@ flowchart TD
     end
 
     class RawMP4,TopicIn,SubSRT,TheoriesJSON data;
-    class Split,Rebuild,Embed,ArcMax,FullEnrich,CharEnrich,FandomScrape,EpIdx,HyDE,Pull,Distiller,ScriptGen,Verifier,Matcher,FinalOut script;
-    class ClipIdx,ColSub,ColEp,ColWiki,ColTopic,WikiJSON db;
+    class Split,Rebuild,Embed,ArcMax,FullEnrich,CharEnrich,FandomScrape,HyDE,Pull,Distiller,ScriptGen,Verifier,Matcher,FinalOut script;
+    class ClipIdx,ColSub,ColWiki,ColTopic,WikiJSON db;
 ```
 
 The content production lifecycle begins with a one-time offline indexing run across all 52 Ben 10 episodes spanning 4 seasons. `scene_splitter.py` applies frame-to-frame histogram shift detection to slice every episode into discrete visual scenes, producing approximately 28,300 clips. Unlike naive pipelines that skip silent action clips, `rebuild_clip_index.py` scans every MP4 on disk and builds a complete skeleton index entry for all of them — including clips with no dialogue — to prevent coverage gaps during clip matching.
