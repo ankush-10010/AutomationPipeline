@@ -33,7 +33,7 @@ This repository houses a **compound AI engineering system** designed to solve th
 
 ## 🏗️ End-to-End System Architecture & Pipeline Workflow
 
-The newly supercharged AI Explainer content engine decouples production into an idempotent, fault-tolerant workflow spanning media ingestion, vector memory formation, and dynamic video assembly. If interrupted by rate limits, hardware blips, or review gates, execution hydrates cleanly from persistent state ledgers.
+The pipeline operates in two major macro-phases: **Clip Indexing** (a one-time offline preprocessing run over all 4 seasons / ~28,300 clips) and **Content Production** (the live, per-topic generation loop). Both phases are fault-tolerant and resumable from checkpoint state.
 
 ```mermaid
 flowchart TD
@@ -42,53 +42,54 @@ flowchart TD
     classDef data fill:#2a9d8f,stroke:#264653,stroke-width:2px,color:#ffffff;
     classDef db fill:#e76f51,stroke:#f4a261,stroke-width:2px,color:#ffffff;
 
-    subgraph Phase1 ["1. Ingestion & Indexing Phase (clip_indexer_allphasesUpdated.py)"]
-        RawMP4["Whole Episode MP4"] --> Split["scene_splitter.py"]
-        Split --> Sub["clip_indexer_subtitles.py"]
-        Sub --> Embed["clip_indexer_embed.py"]
-        Embed --> YOLO["clip_indexer_yolo.py"]
-        YOLO --> Enrich["enrich_clip_characters.py"]
-        RawMP4 --> EpIdx["episode_indexer.py"]
+    subgraph Phase0 ["0. Raw Media → Skeleton Index"]
+        RawMP4["52 Episode MP4s (4 Seasons)"] --> Split["scene_splitter.py"]
+        Split --> Rebuild["rebuild_clip_index.py\n(28,300 clips — silent + dialogue)"]
     end
 
-    subgraph Phase2 ["2. Hybrid RAG Vectorization (rag_manager.py)"]
-        ColSub["ChromaDB Collection: subtitles"]
-        ColEp["ChromaDB Collection: episodes.json"]
-        ColWiki["ChromaDB Collection: wiki.json"]
-        ColTopic["ChromaDB Collection: topics/theories.json"]
+    subgraph Phase1 ["1. Multi-Modal Clip Enrichment"]
+        Rebuild --> Embed["clip_indexer_embed.py\n(MiniLM-L6-v2 text embeddings)"]
+        Embed --> ArcMax["run_visual_tagging_pipeline_arcmax.py\nYOLO 0.85 Fast-Path + ArcFace Verification"]
+        ArcMax --> FullEnrich["run_full_enrichment.py\n(LLM Scene Context + CLIP Visual Embeddings)"]
+        FullEnrich --> CharEnrich["enrich_clip_characters.py\n(Dialogue alias matching + re-embedding)"]
+        CharEnrich --> ClipIdx[("clip_index.json\n28,300 clips · dual embeddings · ArcFace-verified characters")]
     end
 
-    Enrich --> ColSub
-    EpIdx --> ColEp
-    ExtWiki["External Wiki Data"] --> ColWiki
-    ExtTopics["Mining Queue Topics"] --> ColTopic
+    subgraph Phase2 ["2. Knowledge Base — Scrapling + RAG Vectorization"]
+        FandomScrape["scrape_fandom.py\n(Scrapling spider → Ben 10 Fandom wiki)"] --> WikiJSON["wiki.json"]
+        SubSRT["SRT Subtitle Files"] --> ColSub["ChromaDB: subtitles"]
+        EpIdx["episode_indexer.py"] --> ColEp["ChromaDB: episodes"]
+        WikiJSON --> ColWiki["ChromaDB: wiki"]
+        TheoriesJSON["topics/theories.json"] --> ColTopic["ChromaDB: theories"]
+    end
 
-    subgraph Phase3 ["3. Script Generation & Assembly Phase"]
+    subgraph Phase3 ["3. Script Generation & Verification Loop"]
         TopicIn["Topic Input"] --> HyDE["HyDE Monologue Expansion"]
-        HyDE --> Pull["Multi-Vector ChromaDB Pull (12 hits)"]
-        
+        HyDE --> Pull["Multi-Vector ChromaDB Pull"]
         ColSub -.-> Pull
         ColEp -.-> Pull
         ColWiki -.-> Pull
         ColTopic -.-> Pull
-
-        Pull --> Distiller["Llama Context Distiller (Verified Lore Dossier)"]
-        Distiller --> ScriptGen["script_generator.py (4-Act Structure: Hook, Proof, Escalation, Payoff)"]
-        ScriptGen --> Verifier["script_verifier.py (Fluff Sanitization)"]
-        Verifier --> Matcher["clip_matcher.py (+7.0 Character Boost, Outro/Credits Filtering)"]
-        Matcher --> FinalOut["Final MP4 & Metadata Sync"]
+        Pull --> Distiller["Llama Context Distiller"]
+        Distiller --> ScriptGen["script_generator.py\n(4-Act: Hook, Proof, Escalation, Payoff)"]
+        ScriptGen --> Verifier["script_verifier.py\n(Verifier-Corrector Loop — max 2 iterations)"]
+        Verifier --> Matcher["clip_matcher.py\n(+7.0 char boost · dual embedding scoring)"]
+        ClipIdx -.-> Matcher
+        Matcher --> FinalOut["Final 1080p MP4 + YouTube Upload"]
     end
 
-    class RawMP4,TopicIn,ExtWiki,ExtTopics data;
-    class Split,Sub,Embed,YOLO,Enrich,EpIdx,HyDE,Pull,Distiller,ScriptGen,Verifier,Matcher,FinalOut script;
-    class ColSub,ColEp,ColWiki,ColTopic db;
+    class RawMP4,TopicIn,SubSRT,TheoriesJSON data;
+    class Split,Rebuild,Embed,ArcMax,FullEnrich,CharEnrich,FandomScrape,EpIdx,HyDE,Pull,Distiller,ScriptGen,Verifier,Matcher,FinalOut script;
+    class ClipIdx,ColSub,ColEp,ColWiki,ColTopic,WikiJSON db;
 ```
 
-The content production lifecycle initiates with the ingestion and indexing phase orchestrated by `clip_indexer_allphasesUpdated.py`, which transforms raw full-length video files into structured, searchable multi-modal assets. When a whole episode MP4 enters the system, it bifurcates into two parallel processing tracks. Along the primary visual and dialogue track, `scene_splitter.py` slices the continuous video into discrete visual scenes based on frame-to-frame histogram shifts. These scenes flow directly into `clip_indexer_subtitles.py` to align dialogue transcripts with exact millisecond timestamps, followed by `clip_indexer_embed.py` which generates dense semantic vector representations of the spoken dialogue. Next, `clip_indexer_yolo.py` deploys custom object detection models across video frames to identify specific character bounding boxes and screen presence. Finally, `enrich_clip_characters.py` fuses these visual detection logs with the dialogue transcripts to output richly annotated clip metadata. Concurrently, the second processing track routes the raw episode MP4 through `episode_indexer.py` to extract macro-level narrative summaries and structural plot progression.
+The content production lifecycle begins with a one-time offline indexing run across all 52 Ben 10 episodes spanning 4 seasons. `scene_splitter.py` applies frame-to-frame histogram shift detection to slice every episode into discrete visual scenes, producing approximately 28,300 clips. Unlike naive pipelines that skip silent action clips, `rebuild_clip_index.py` scans every MP4 on disk and builds a complete skeleton index entry for all of them — including clips with no dialogue — to prevent coverage gaps during clip matching.
 
-Once the raw media is fully indexed, `rag_manager.py` executes the hybrid retrieval-augmented generation vectorization process to establish long-term system memory. This centralized manager ingests the processed clip dialogue from `subtitles`, the macro narrative summaries from `episodes.json`, canonical background lore from `wiki.json`, and community engagement concepts from `topics/theories.json`. Rather than commingling these distinct data types, `rag_manager.py` partitions them into four dedicated, persistent ChromaDB vector collections. This strict architectural separation guarantees that downstream generation queries can perform targeted multi-vector searches across granular dialogue, episodic context, factual wiki documentation, and viral thematic structures independently without cross-contamination.
+With the skeleton index in place, the enrichment pipeline runs globally across all 28,300 clips in four passes. `clip_indexer_embed.py` first computes `all-MiniLM-L6-v2` text embeddings from dialogue and keyword tags. The ArcMax cascade pipeline (`run_visual_tagging_pipeline_arcmax.py`) then runs the fine-tuned YOLO classifier at a confidence threshold of 0.85: clips where YOLO is highly certain bypass the expensive ArcFace math entirely via a fast-path, while uncertain detections get their YOLO bounding box crops extracted and verified by the fine-tuned CLIP + ArcFace projection head against prototype embeddings. Any character appearing in fewer than 8 clips globally is pruned as a false positive, yielding `visual_characters` and `prototype_detections` fields with high-confidence character presence signals. `run_full_enrichment.py` then runs an Ollama LLM pass to generate clip-level `scene_context`, `visual_description`, and `emotion_tone` metadata, followed by a CLIP ViT-B-32 visual embedding pass over middle frames to produce `clip_visual_embedding`. Finally, `enrich_clip_characters.py` regex-matches character aliases from `show_config.yaml` against subtitle dialogue to augment visual detections with text-confirmed character tags and re-embeds all clips with the full enriched metadata context.
 
-The final phase synthesizes these vectorized knowledge bases into highly engaging short-form vertical videos optimized for TikTok and YouTube Shorts. When a conceptual topic input is introduced, the engine applies Hypothetical Document Embeddings via HyDE monologue expansion to generate an idealized narrative response. This expanded query executes a multi-vector ChromaDB pull across all four persistent collections to retrieve the top twelve most semantically relevant context hits. A Llama context distiller condenses these raw retrieval hits into a verified lore dossier, stripping away irrelevant noise while preserving canonical ground truth. Fed by this grounded dossier, `script_generator.py` crafts the narration using a strict four-act dramatic structure consisting of an attention-grabbing hook, empirical proof, narrative escalation, and a satisfying payoff. To maintain viewer retention, `script_verifier.py` subsequently audits the draft to perform fluff sanitization, eliminating repetitive phrasing or pacing drag. Once verified, `clip_matcher.py` pairs each narration segment with optimal video B-roll by applying a positive seven-point scoring boost to clips featuring matching visual characters while strictly filtering out outro sequences and black screen credits. The pipeline culminates in final MP4 video rendering and metadata synchronization, readying the finished short-form asset for immediate publishing.
+The knowledge base is assembled in parallel. `scrape_fandom.py` uses Scrapling's async spider to crawl the entire Ben 10 Fandom wiki, converting character lore, alien biology, and episode trivia into `wiki.json`. `rag_manager.py` ingests this alongside episode transcripts, plot summaries, and fan theories into four dedicated ChromaDB vector collections. This partitioned architecture ensures that downstream retrieval queries can pull precisely from dialogue, episodic context, canonical lore, or viral theory content independently.
+
+The live generation loop takes a topic concept and applies Hypothetical Document Embeddings (HyDE) to generate an idealized narrative response, which is then used as an enriched query vector against all four ChromaDB collections. A Llama context distiller condenses the top retrieval hits into a verified canonical dossier. `script_generator.py` uses this grounded dossier to craft a narration following a strict four-act dramatic structure: hook, empirical proof, narrative escalation, and satisfying payoff. The Verifier-Corrector Loop then audits every factual claim before any media rendering begins. Once verified, `clip_matcher.py` pairs narration segments with optimal B-roll using a composite scoring function that weighs text-semantic similarity, CLIP visual-semantic similarity, character presence boosts, transformation matches, and scene context alignment, while filtering outro sequences and black-screen credits.
 
 ---
 
@@ -121,13 +122,34 @@ flowchart TD
 
 ## 👁️ Multi-Modal Visual Indexing Engine
 
-Matching narration text to video B-roll at scale requires understanding video clips across multiple semantic layers. **Phase 5 (`match`)** utilizes a hybrid retrieval strategy:
+The core hard problem with this project is **character recognition in a cartoon** where the same character (Ben Tennyson) can appear in 30+ completely different alien forms, and minor characters like Eye Guy might have only 6 training images while main characters have 1,600+. A standard softmax classifier would simply ignore rare classes. We solved this with a three-layer approach.
 
-* **Object & Character Level (`YOLO_finetuning.py`)**: Custom fine-tuned **YOLOv8** models detect specific character bounding boxes and screen presence across thousands of raw video frames.
-* **Semantic & Action Level (`clip_indexer_vision.py`)**: Local Vision-Language Models (**LLaVA** via Ollama) analyze middle-frame extractions to index scene lighting, character actions, and physical environments.
-* **Dialogue Level (`episode_indexer.py`)**: Subtitle files are parsed into 384-dimensional sentence embeddings to anchor clips to canonical episode plotlines.
+### Problem 1: Characters Were Not Being Identified
 
-When drafting the assembly manifest, the decision engine calculates a composite similarity score to pair narration chunks with the mathematically optimal clip.
+The initial pipeline using stock YOLOv8 was unable to reliably identify Ben 10 specific characters and alien forms because the base model had never seen cartoon animation frames at this specificity. We solved this with two targeted fine-tuning stages.
+
+**Stage 1 — YOLO Classification Fine-Tuning (`YOLO_finetuning_noBoundingBox.py`):** Rather than training a detection model that requires bounding box annotations (which are expensive to produce), we repurposed YOLOv8's image classification head (`yolov8n-cls.pt`). The model is trained at 224×224 resolution on a character image dataset organized into class folders, producing a `best.pt` that can classify a whole frame or crop into one of the 30 Ben 10 character/alien classes directly. This sidesteps the annotation bottleneck entirely.
+
+**Stage 2 — ArcFace Metric Learning on Fine-Tuned CLIP (`arcface_metric_train.py`):** The second stage addresses the class-imbalance problem that defeats standard softmax. We freeze the CLIP ViT-B-32 backbone and train only a small projection head (512 → 256 → 128 dimensions, `ProjectionHead`) on top using ArcFace loss. ArcFace optimizes for angular separation on the unit hypersphere: even a class with 6 training images gets pushed far away from all other classes in embedding space because the loss penalizes the angle between an embedding and its class center, not class frequency. The dataset is balanced using `WeightedRandomSampler` so rare characters are oversampled. For high-image-count classes like Ben, k-means clustering produces multiple sub-prototypes to handle outfit/transformation variance. The output is `arcface_head.pt` (projection weights) and `prototypes.npz` (per-class prototype embeddings in the 128-d space).
+
+### The ArcMax Cascade (`run_visual_tagging_pipeline_arcmax.py`)
+
+At inference time, the two stages combine into a two-speed cascade to handle 28,300 clips efficiently:
+
+* **Fast-Path (YOLO ≥ 0.85 confidence):** When the fine-tuned YOLO classifier is highly certain, the character is confirmed immediately. No ArcFace math runs. This handles the majority of clips where main characters appear prominently.
+* **Slow-Path (YOLO < 0.85):** Uncertain detections have their YOLO bounding box crops extracted, passed through frozen CLIP ViT-B-32, projected through the ArcFace head, and matched against stored prototypes using cosine similarity with threshold τ = 0.50. A contiguity filter requires a character to appear in at least 3 consecutive frames before being tagged, suppressing single-frame noise.
+* **Global Frequency Pruning:** After processing all clips, any character detected in fewer than 8 clips total is pruned as a false positive — an especially useful guard against background extras being mistaken for named characters.
+
+### Dual Embedding Strategy
+
+Each clip in the final index carries two orthogonal embedding spaces used jointly by `clip_matcher.py`:
+
+* **`embedding`** — `all-MiniLM-L6-v2` text embedding over the enriched metadata string (characters, emotion tone, LLM scene context, dialogue, tags). This captures *semantic narrative meaning*.
+* **`clip_visual_embedding`** — CLIP ViT-B-32 embedding of the middle frame of the actual video clip. This captures *visual content* directly and is the primary signal for matching narration about specific visual events (e.g. "Ben transforms into Heatblast") to clips showing exactly that.
+
+### Data — Scrapling for the Knowledge Base
+
+Character lore, alien biology, episode trivia, and fan theories were collected by running `scrape_fandom.py`, which uses Scrapling's async spider framework to crawl the entire Ben 10 Fandom wiki. The scraped content is stored in `wiki.json` and ingested into a dedicated ChromaDB vector collection, giving the RAG system access to canonical show knowledge that no language model reliably has in its weights.
 
 ---
 
@@ -157,33 +179,46 @@ Instead of wrapping code in generic `try/except` blocks, the orchestrator mainta
 ## 📂 Repository Structure
 
 ```text
-├── 📁 config/                         # YAML configuration definitions (Models, API endpoints, thresholds)
-├── 📁 notebooks/                      # GPU Colab notebooks for cloud-offloaded XTTS voice synthesis
-├── 📁 prompts/                        # System prompts for Topic Miner, Script Verifier, and RAG agents
-├── 📁 scripts/                        # Core modular execution engine
-│   ├── orchestrator.py                # Master 8-phase pipeline controller & state ledger manager
-│   ├── clip_indexer_allphasesUpdated.py # Master pipeline for video ingestion, splitting, and CV tagging
-│   ├── scene_splitter.py              # Visual scene boundary detection via histogram shifts
-│   ├── clip_indexer_subtitles.py      # Subtitle alignment and timestamp extraction engine
-│   ├── clip_indexer_embed.py          # Dialogue embedding generator for vector retrieval
-│   ├── clip_indexer_yolo.py           # Frame-level YOLOv8 object and character detection
-│   ├── enrich_clip_characters.py      # Fusion script combining CV character logs with subtitle text
-│   ├── episode_indexer.py             # Macro narrative summary and plot progression extractor
-│   ├── rag_manager.py                 # Multi-collection ChromaDB ingestion and vectorization manager
-│   ├── topic_miner.py                 # Phase 1a: Autonomous topic ideation queue manager
-│   ├── script_generator.py            # Phase 1b: 4-Act structure RAG script drafting engine
-│   ├── web_researcher.py              # Fact dossier compiler via search APIs
-│   ├── script_verifier.py             # Closed-loop fluff sanitization and lore auditor loop
-│   ├── tts_local.py                   # Phase 2: Local neural voice synthesis (Piper TTS)
-│   ├── captioner.py                   # Phase 3: Faster-Whisper word-level timestamp extraction
-│   ├── clip_matcher.py                # Phase 4: Multi-modal visual B-roll matcher (+7.0 char boost)
-│   ├── assembler.py                   # Phase 5: Subprocess FFmpeg hardware video compositor
-│   ├── thumbnail_generator.py         # Phase 6: Computer vision frame ranker & thumbnail renderer
-│   ├── publisher.py                   # Phase 7: YouTube Data API v3 OAuth upload controller
-│   ├── YOLO_finetuning.py             # Custom YOLOv8 training pipeline for character detection
-│   └── clip_indexer_vision.py         # LLaVA local VLM automated scene tagger
-├── 📁 vector_db/                      # Persistent ChromaDB vector collections (4 dedicated spaces)
-└── README.md                          # System documentation
+├── 📁 config/                              # YAML configuration (models, API endpoints, thresholds, show config)
+├── 📁 notebooks/                           # GPU Colab notebooks for cloud-offloaded voice synthesis
+├── 📁 prompts/                             # System prompts for Topic Miner, Script Verifier, RAG agents
+├── 📁 scripts/                             # Core modular execution engine
+│   │
+│   │  ── Clip Indexing Pipeline ──
+│   ├── scene_splitter.py                   # Visual scene boundary detection via histogram shifts
+│   ├── rebuild_clip_index.py               # Skeleton index builder — scans ALL mp4s, including silent clips
+│   ├── clip_indexer_embed.py               # MiniLM-L6-v2 text embedding generator
+│   ├── run_visual_tagging_pipeline_arcmax.py # ArcMax Cascade: YOLO fast-path + ArcFace verification
+│   ├── run_full_enrichment.py              # Orchestrates LLM scene context + CLIP visual embeddings
+│   ├── clip_indexer_scene_context.py       # Ollama LLM scene chunker (scene_context, visual_description, emotion_tone)
+│   ├── clip_indexer_clip_embed.py          # CLIP ViT-B-32 visual embedding from middle frames
+│   ├── clip_indexer_subtitles.py           # Subtitle alignment and timestamp extraction
+│   ├── enrich_clip_characters.py           # Dialogue alias matching + semantic re-embedding
+│   ├── enrich_clip_metadata.py             # Fast metadata pass: speaker label cleanup, transformation detection
+│   ├── episode_indexer.py                  # Macro episode plot summary and structure extractor
+│   │
+│   │  ── Model Training ──
+│   ├── YOLO_finetuning_noBoundingBox.py    # YOLOv8 classification fine-tuning (no bounding box annotations needed)
+│   ├── arcface_metric_train.py             # ArcFace metric learning on frozen CLIP ViT-B-32 (Colab)
+│   │
+│   │  ── Knowledge Base ──
+│   ├── scrape_fandom.py                    # Scrapling async spider — crawls entire Ben 10 Fandom wiki
+│   ├── rag_manager.py                      # ChromaDB multi-collection ingestion and HyDE retrieval engine
+│   │
+│   │  ── Content Production Orchestrator ──
+│   ├── orchestrator_noImage_gpuVoice.py    # Master 8-phase pipeline controller & fault-tolerant state ledger
+│   ├── topic_miner.py                      # Autonomous topic ideation queue manager
+│   ├── script_generator.py                 # 4-Act RAG script drafting engine
+│   ├── web_researcher.py                   # Live fact dossier compiler via DuckDuckGo search
+│   ├── script_verifier.py                  # Verifier-Corrector closed loop — max 2 correction iterations
+│   ├── tts_local.py                        # Local neural voice synthesis (Kokoro / Piper TTS)
+│   ├── captioner.py                        # Faster-Whisper word-level timestamp extractor
+│   ├── clip_matcher.py                     # Multi-modal B-roll matcher (text + visual embeddings + char boost)
+│   ├── assembler.py                        # FFmpeg hardware video compositor
+│   ├── thumbnail_generator.py              # CV frame ranker & thumbnail renderer
+│   └── publisher.py                        # YouTube Data API v3 OAuth upload controller
+├── 📁 vector_db/                           # Persistent ChromaDB vector collections (4 dedicated spaces)
+└── README.md
 ```
 
 ---
