@@ -23,6 +23,8 @@
 - [Step 2: AI Clustering](#-step-2-ai-clustering)
 - [Step 3: Character Cropping & Metadata](#-step-3-character-cropping--metadata)
 - [Step 4: Final YOLO Label Generation](#-step-4-final-yolo-label-generation)
+- [Step 5: Model Training](#-step-5-model-training)
+- [Step 6: ArcFace Metric Training](#-step-6-arcface-metric-training-optional-but-highly-recommended)
 - [Troubleshooting & Tips](#-troubleshooting--tips)
 
 ---
@@ -68,6 +70,16 @@ flowchart TD
         S4 -->|"Generates standard\nYOLO .txt labels"| YFD["✅ YOLO_Final_Dataset/\n(images/ & labels/)"]
     end
 
+    subgraph STAGE4 ["🚀 Stage 4: Model Training"]
+        YFD --> S5["🐍 05_train_yolo_model.py"]
+        S5 -->|"Trains & exports"| FM["🧠 final_model/\n(best.pt)"]
+    end
+
+    subgraph STAGE5 ["🧬 Stage 5: Advanced Metric Learning"]
+        RD --> S6["🐍 06_train_arcface_model.py\n(Few-Shot Recognition)"]
+        S6 -->|"Exports head & prototypes"| AF["🧠 arcface_head.pt &\nprototypes.npz"]
+    end
+
     style V fill:#6366f1,stroke:#4f46e5,color:#fff
     style S1 fill:#f97316,stroke:#ea580c,color:#fff
     style D fill:#06b6d4,stroke:#0891b2,color:#fff
@@ -83,7 +95,13 @@ flowchart TD
     style CR_CLEAN fill:#22c55e,stroke:#16a34a,color:#fff
     
     style S4 fill:#f97316,stroke:#ea580c,color:#fff
-    style YFD fill:#ec4899,stroke:#db2777,color:#fff
+    style YFD fill:#06b6d4,stroke:#0891b2,color:#fff
+
+    style S5 fill:#f97316,stroke:#ea580c,color:#fff
+    style FM fill:#ec4899,stroke:#db2777,color:#fff
+
+    style S6 fill:#f97316,stroke:#ea580c,color:#fff
+    style AF fill:#ec4899,stroke:#db2777,color:#fff
 ```
 
 ---
@@ -190,6 +208,67 @@ This script closes the loop, merging your manual review with the original full-f
 
 > [!IMPORTANT]
 > Because of this workflow, if an original image had both Ben and Gwen, but it was stored in the `BenTennyson` folder, the final label file will *only* have a bounding box drawn around Ben. Gwen will be treated as background, which is exactly what we want for robust model training!
+
+---
+
+## 🚀 Step 5: Model Training
+
+**Script:** `05_train_yolo_model.py`
+
+Once your dataset is fully built and labeled, it's time to train your custom object detection model! This script handles the Ultralytics YOLOv8 training pipeline automatically.
+
+### How it works:
+1. It automatically detects if you have an NVIDIA GPU (CUDA) available.
+2. It looks for the dataset configuration file at `YOLO_Final_Dataset/data.yaml`.
+3. It kicks off the training process (fine-tuning a base YOLOv8 model) using your carefully curated images and labels.
+4. When finished, it saves the compiled model weights to the `final_model/` directory.
+
+### What you need to do:
+1. Ensure your dataset was generated properly in Step 4.
+2. Run the training script:
+   ```bash
+   python 05_train_yolo_model.py
+   ```
+3. **Wait!** Training can take anywhere from a few hours to a day depending on your dataset size and hardware.
+4. Once complete, you will find your best trained weights at:
+   `AutomationPipeline-main/final_model/weights/best.pt`
+
+> [!WARNING]
+> **Hardware Check:** This script requires a dedicated NVIDIA GPU for reasonable training times. If the script warns you that it is "Training on CPU", you should expect the training to take a *very* long time. If you do not have a strong GPU, you should zip the `YOLO_Final_Dataset` folder and upload it to Google Colab to run the training there!
+
+---
+
+## 🧬 Step 6: ArcFace Metric Training (Optional but Highly Recommended)
+
+**Script:** `06_train_arcface_model.py`
+
+While YOLO is incredible at finding main characters, what happens when you only have **6 images** of a rare alien (like Eye Guy) vs **1,600 images** of Ben? A standard classification model will simply ignore the rare alien. 
+
+This script solves that by fine-tuning a projection head on top of a frozen CLIP ViT-B-32 model using **ArcFace loss**. ArcFace optimizes for angular separation in embedding space, pushing even rare identities away from the rest, making it perfect for **few-shot, open-set character recognition**.
+
+### How it works:
+1. It pre-computes CLIP embeddings for all images directly from your `Ready Dataset/` (it doesn't use the YOLO format).
+2. It trains a small projection head with ArcFace loss to separate all 30+ character classes.
+3. It computes a "prototype" embedding for each class in this new space.
+4. It outputs `arcface_head.pt` (the weights) and `prototypes.npz` (the embeddings).
+
+### What you need to do:
+1. Make sure your `Ready Dataset/` is fully organized with all character folders.
+2. Run the script:
+   ```bash
+   python 06_train_arcface_model.py --dataset "Ready Dataset" --epochs 40
+   ```
+3. Once training is complete, the `arcface_head.pt` and `prototypes.npz` files will be saved.
+
+> [!CAUTION]
+> **Local Training vs Colab:** Just like YOLO, training this ArcFace head locally requires an NVIDIA GPU and libraries like `sentence-transformers` and `torchvision`. 
+> 
+> If you are on a slow machine, it is highly recommended to **use Google Colab**:
+> 1. Zip your `Ready Dataset/` folder and upload it to Google Drive.
+> 2. Open Colab and run: `!pip install -q sentence-transformers torch torchvision`
+> 3. Download this exact python script to Colab.
+> 4. Run `!python 06_train_arcface_model.py --dataset "Ready Dataset" --epochs 40`
+> 5. Download the extremely small `arcface_head.pt` (~500KB) and `prototypes.npz` back to your laptop.
 
 ---
 
