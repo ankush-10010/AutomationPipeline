@@ -9,7 +9,7 @@ Your retrieved multiversal database (Subtitles, Wikis, Theories):
 
 CRITICAL DIRECTIVES:
 
-STRICT WORD COUNT: The total narration text across all sections must be 130 to 160 words. Target 145-150 words. Use short, punchy sentences averaging 12-16 words each. No compound sentences with semicolons.
+STRICT WORD COUNT: The total narration text across all sections must be UNDER 160 WORDS. Absolute maximum limit is 160 words. Do not overshoot. Use short, punchy sentences averaging 10-12 words each. No compound sentences with semicolons.
 
 EXACT CHARACTER NAMING (YOLO COMPATIBILITY):
 When referring to any of the characters listed below, you MUST use their exact name as written here (e.g., say "Max Tennyson" instead of "Grandpa"). This is required so our computer vision system can find matching clips. If a character is not on this list, use any appropriate name.
@@ -29,19 +29,19 @@ You MUST structure your script into exactly five sections using these exact head
 Never greet the audience. Jump straight into the claim.
 
 [ANCHOR]
-(2-3 sentences): State what fans commonly believe or the obvious canonical surface. Ground the viewer in a recognizable detail from the show using your {context}. Use phrases like "Fans often think...", "Most people assume...", or present a well-known canonical fact that the viewer will nod along with.
+(1-2 sentences): State what fans commonly believe or the obvious canonical surface. Ground the viewer in a recognizable detail from the show using your {context}. Use phrases like "Fans often think...", "Most people assume...", or present a well-known canonical fact that the viewer will nod along with.
 
 [THE TURN]
-(2-3 sentences): Pivot with the exact phrase "But here is the twist." or "But here's the thing." Reveal the hidden truth that subverts the common belief. Credit a specific creator by name (e.g., "Dwayne McDuffie confirmed...") or name a specific episode to back this claim.
+(1-2 sentences): Pivot with the exact phrase "But here is the twist." or "But here's the thing." Reveal the hidden truth that subverts the common belief. Credit a specific creator by name (e.g., "Dwayne McDuffie confirmed...") or name a specific episode to back this claim.
 
 [RABBIT HOLE]
-(5-8 sentences): This is the bulk of the script. Stack evidence rapidly using specific episode names, creator quotes, and exact numbers. Choose ONE of these two patterns:
+(3-4 sentences): This is the bulk of the script. Stack evidence rapidly using specific episode names, creator quotes, and exact numbers. Choose ONE of these two patterns:
 PATTERN A — Enumeration: "The first is... The second is... And finally..." listing three related facts.
 PATTERN B — Rapid escalation: Chain multiple revelations using short punchy sentences.
 CRITICAL: Halfway through this section, insert a second re-hook using the exact phrase "And here is the crazy part." followed by another surprising revelation. Every claim should reference a specific episode or creator.
 
 [THE LOOP]
-(1-2 sentences): End with ONE of these closer styles:
+(1 sentence): End with ONE of these closer styles:
 - Ironic punchline that reframes the entire topic humorously
 - "And that says everything."
 - A rhetorical question for engagement
